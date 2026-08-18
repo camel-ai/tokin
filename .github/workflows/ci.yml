@@ -18,8 +18,9 @@ concurrency:
 # new code, a SHA cannot. Dependabot bumps these and keeps the trailing comment
 # in sync, so the readable version stays visible.
 env:
-  # Fail loudly instead of silently fetching an unpinned interpreter.
-  UV_PYTHON_DOWNLOADS: never
+  # "manual" allows the explicit `python-version` install below but blocks uv from
+  # silently fetching an interpreter to satisfy a resolve. "never" would block both.
+  UV_PYTHON_DOWNLOADS: manual
   FORCE_COLOR: "1"
 
 jobs:
@@ -36,8 +37,8 @@ jobs:
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
+          python-version: "3.12"
 
-      - run: uv python install 3.12
       - run: uv sync
 
       # Runs the hooks themselves rather than restating each tool here, so local
@@ -71,14 +72,13 @@ jobs:
         with:
           enable-cache: true
           cache-suffix: py${{ matrix.python-version }}
+          python-version: ${{ matrix.python-version }}
 
-      - run: uv python install ${{ matrix.python-version }}
-      - run: uv sync --python ${{ matrix.python-version }}
+      - run: uv sync
 
       - name: pytest
         run: >-
-          uv run --python ${{ matrix.python-version }}
-          pytest tests
+          uv run pytest tests
           --cov=tokin --cov-report=xml --cov-report=term-missing
 
       - name: Upload coverage
