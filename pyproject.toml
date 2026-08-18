@@ -1,0 +1,163 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tokin"
+dynamic = ["version"]
+description = "Make any agent harness token-native."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Yuan He", email = "yuanhe.cs.ai@gmail.com" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = [
+    "aiohttp>=3.10",
+    "jinja2>=3.1",
+    "transformers>=5.6",
+]
+
+[project.scripts]
+tokin = "tokin.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/camel-ai/tokin"
+Repository = "https://github.com/camel-ai/tokin"
+Issues = "https://github.com/camel-ai/tokin/issues"
+
+# PEP 735. Deliberately not `[project.optional-dependencies].dev`: dev tooling is
+# not a feature users can install, and it stays out of the published metadata.
+[dependency-groups]
+dev = [
+    "mypy>=1.15,<2",
+    "pre-commit>=4",
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6",
+    "pytest-mock>=3.14",
+    "pytest-timeout>=2.3",
+    "ruff>=0.16",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tokin"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "README.md", "LICENSE"]
+
+# ---------------------------------------------------------------------------
+# Lint / format
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "ASYNC", # flake8-async — we are an async HTTP layer
+    "B",     # flake8-bugbear
+    "C4",    # flake8-comprehensions
+    "D",     # pydocstyle
+    "E",     # pycodestyle errors
+    "F",     # pyflakes
+    "G",     # logging format
+    "I",     # isort
+    "LOG",   # logging
+    "N",     # pep8-naming
+    "PIE",   # flake8-pie
+    "RUF006", # unowned asyncio task — a dropped task loses a rollout silently
+    "RUF012", # mutable class attr without ClassVar
+    "RUF100", # unused noqa
+    "SIM",   # flake8-simplify
+    "TRY201", # verbose raise
+    "UP",    # pyupgrade
+    "W",     # pycodestyle warnings
+]
+# E501: the formatter owns line width; long URLs and token dumps shouldn't fail lint.
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# Docstrings are enforced on the public surface only.
+"!src/**/*.py" = ["D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["tokin"]
+
+# ---------------------------------------------------------------------------
+# Types
+# ---------------------------------------------------------------------------
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+# Strict by default: a dependency without stubs has to be named below, so nothing
+# silently degrades to Any.
+ignore_missing_imports = false
+follow_untyped_imports = true
+
+# A dependency without stubs gets a [[tool.mypy.overrides]] entry here, named
+# explicitly. mypy reports unused sections, so stale entries don't accumulate.
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+timeout = 90
+# Warnings are errors: a transformers deprecation that changes tokenizer or
+# chat-template behaviour must fail loudly, not scroll past.
+filterwarnings = ["error"]
+markers = [
+    "integration: requires a running inference server (SGLang or vLLM)",
+    "tokenizer: downloads a real HuggingFace tokenizer (network on first run)",
+]
+
+[tool.coverage.run]
+source = ["src/tokin"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "@(abc\\.)?abstractmethod",
+    "raise NotImplementedError",
+    "@(typing\\.)?overload",
+    "class .*\\bProtocol\\):",
+]
