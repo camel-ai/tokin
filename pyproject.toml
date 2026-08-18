@@ -41,7 +41,9 @@ Issues = "https://github.com/camel-ai/tokin/issues"
 # not a feature users can install, and it stays out of the published metadata.
 [dependency-groups]
 dev = [
-    "mypy>=1.15,<2",
+    # No upper bound: uv.lock pins the exact version for reproducibility, so a
+    # ceiling here would only hide new checks behind a major release.
+    "mypy>=2.3",
     "pre-commit>=4",
     "pytest>=8",
     "pytest-asyncio>=0.24",
