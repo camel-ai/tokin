@@ -41,7 +41,7 @@ Issues = "https://github.com/camel-ai/tokin/issues"
 # not a feature users can install, and it stays out of the published metadata.
 [dependency-groups]
 dev = [
-    "mypy>=1.15,<2",
+    "mypy>=2.3.0,<3",
     "pre-commit>=4",
     "pytest>=8",
     "pytest-asyncio>=0.24",
