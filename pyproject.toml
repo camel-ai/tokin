@@ -148,6 +148,8 @@ markers = [
     "integration: requires a running inference server (SGLang or vLLM)",
     "tokenizer: downloads a real HuggingFace tokenizer (network on first run)",
 ]
+# Both marked suites reach the network, so they are opt-in: `-m tokenizer`.
+addopts = "-m 'not integration and not tokenizer'"
 
 [tool.coverage.run]
 source = ["src/tokin"]
