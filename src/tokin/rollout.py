@@ -28,24 +28,23 @@ class Rollout:
 
     def add_prompt(self, token_ids: list[int]) -> None:
         """Add prompt (input) tokens."""
-        self._add(Turn(token_ids=list(token_ids), generated=False))
+        # A zero-length turn adds no tokens but still reads as a segment boundary.
+        if token_ids:
+            self.turns.append(Turn(token_ids=list(token_ids), generated=False))
 
     def add_response(self, token_ids: list[int], logprobs: list[float] | None = None) -> None:
         """Add model-generated (output) tokens."""
-        if token_ids and not self.turns:
+        if not token_ids:
+            return
+        if not self.turns:
             raise RuntimeError("a rollout cannot open with a generated turn; add_prompt first")
-        self._add(
+        self.turns.append(
             Turn(
                 token_ids=list(token_ids),
                 generated=True,
                 logprobs=None if logprobs is None else list(logprobs),
             )
         )
-
-    def _add(self, turn: Turn) -> None:
-        # A zero-length turn adds no tokens but still reads as a segment boundary.
-        if turn.token_ids:
-            self.turns.append(turn)
 
     @property
     def token_ids(self) -> list[int]:

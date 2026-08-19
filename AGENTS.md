@@ -56,6 +56,51 @@ Comment the *why*, on the line it explains. Design rationale that needs
 paragraphs belongs in the commit message, attached to the change rather than to
 the code forever.
 
+### Private helpers
+
+Extract a helper because the logic has a *name*, not because it repeats.
+Repetition is usually better removed with a parameter or a loop; a helper earns
+its place by naming a concept.
+
+Three thresholds:
+
+- **Under four lines: inline it.** Helpers that short are 0% of httpx's, 8% of
+  hatch's, 15% of pydantic's. The indirection costs more than it saves.
+- **Called once: the name has to say something concrete.** Single-use helpers are
+  normal (46–75% of private helpers across these projects), so call count is not
+  the test — nameability is. If the best name available is `_add` or `_process`,
+  there is no concept to extract.
+- **Keep private under ~20% of functions in a module.** hatch runs 10%, httpx
+  16%, pydantic 22%. Past that a function is being sliced up rather than having
+  concepts lifted out of it.
+
+Median private helper across those projects is 8–15 lines. That is the size at
+which naming something pays.
+
+When a helper does survive, define it before its callers so reading top to bottom
+never requires jumping ahead.
+
+### Module-level private functions
+
+**Default is zero per file.** Adding one means arguing why it belongs to neither a
+class nor its single caller. In hatch only 6 of 65 files have any; in httpx, 3 of
+17. A module-level `_helper` has no owner, which is why these accumulate: anyone
+can add one and nothing says what it pairs with.
+
+Where they actually belong:
+
+- Used by one class → make it a method on that class.
+- Used once inside one function → inline it, or nest it in that function.
+- A genuinely general pure function used from several places → it is probably
+  public, or it belongs in its own module.
+
+Module-level private *constants* (`_HEADERS = (...)`) are exempt — constants
+belong at module scope, and these projects carry dozens.
+
+The failure mode to avoid, for scale: `run_state.py` in openai-agents has 82
+module-level private functions, and that repo also runs the highest private share
+of the four at 50%. Both numbers move together.
+
 ### Prose
 
 Single backticks around identifiers and endpoints: `input_ids`, not
