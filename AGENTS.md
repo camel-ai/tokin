@@ -49,11 +49,17 @@ that is the target rather than a gap. `D1` stays unselected.
 
 ### Comments
 
-One sentence. Longer only when the reasoning genuinely doesn't compress.
+A comment states the non-obvious reason at the boundary that owns it. One
+sentence. Add a constraint or an expiry condition only when a maintainer needs it
+to judge when the reason stops holding.
 
-Comment the *why*, on the line it explains. Design rationale that needs
-paragraphs belongs in the commit message, attached to the change rather than to
-the code forever.
+Never restate the operation, preserve an intermediate attempt, or list
+speculative future work.
+
+Behaviour goes in code; durable contracts go in the doc that owns them. If an
+explanation runs to a paragraph, it is either describing what the code already
+says — delete it — or it is a contract, and belongs here or in the commit
+message.
 
 ### Private helpers
 
