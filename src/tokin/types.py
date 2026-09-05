@@ -1,0 +1,31 @@
+from __future__ import annotations
+
+from openai.types.chat import (
+    ChatCompletionAssistantMessageParam as _AssistantMessage,
+    ChatCompletionDeveloperMessageParam as DeveloperMessage,
+    ChatCompletionMessageToolCallUnionParam as ToolCall,
+    ChatCompletionSystemMessageParam as SystemMessage,
+    ChatCompletionToolMessageParam as ToolMessage,
+    ChatCompletionToolParam as ToolSchema,
+    ChatCompletionUserMessageParam as UserMessage,
+)
+
+
+class AssistantMessage(_AssistantMessage, total=False):
+    """OpenAI's assistant message plus the field reasoning models keep their thinking in."""
+
+    reasoning_content: str
+
+
+type Message = DeveloperMessage | SystemMessage | UserMessage | AssistantMessage | ToolMessage
+
+__all__ = [
+    "AssistantMessage",
+    "DeveloperMessage",
+    "Message",
+    "SystemMessage",
+    "ToolCall",
+    "ToolMessage",
+    "ToolSchema",
+    "UserMessage",
+]

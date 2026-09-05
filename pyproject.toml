@@ -26,6 +26,7 @@ classifiers = [
 dependencies = [
     "aiohttp>=3.10",
     "jinja2>=3.1",
+    "openai>=2",
     "transformers>=5.6",
 ]
 
@@ -105,6 +106,7 @@ convention = "google"
 
 [tool.ruff.lint.isort]
 known-first-party = ["tokin"]
+combine-as-imports = true
 
 # ---------------------------------------------------------------------------
 # Types
