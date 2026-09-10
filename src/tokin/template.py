@@ -4,20 +4,15 @@ import copy
 import itertools
 import json
 from collections.abc import Iterable
-from typing import Any, ClassVar, Literal, cast, overload
+from typing import Any, ClassVar, cast
 
 from transformers import PreTrainedTokenizerBase
 
-from .types import Message, ToolCall, ToolSchema
-
-STUB: tuple[Message, ...] = (
-    {"role": "system", "content": "tokin-stub-system"},
-    {"role": "user", "content": "tokin-stub-user"},
-)
+from .types import AssistantMessage, Message, PromptMessage, SystemMessage, ToolCall, ToolSchema, UserMessage
 
 
-class RenderError(RuntimeError):
-    """The template cannot extend the served prefix; the caller has to fork."""
+class TemplateError(RuntimeError):
+    """The template cannot continue a served prompt with these messages; start over from `apply`."""
 
 
 class ChatTemplate:
@@ -31,8 +26,6 @@ class ChatTemplate:
         turn_end (str): What the template writes after assistant content, such as
             `"<|im_end|>\n"`. Empty when a turn ends by the next one starting.
         stop (tuple[str, ...]): Every token the model may stop on; the server gets them as stop ids.
-        arguments (Literal["dict", "str"]): Whether the template wants tool-call arguments as a mapping
-            or as JSON text.
         kwargs (tuple[str, ...]): Keyword arguments the template reads, such as `enable_thinking`;
             HF passes them as `**kwargs`, the wire as `chat_template_kwargs`, and any other name
             is a mistake the template would swallow.
@@ -43,7 +36,6 @@ class ChatTemplate:
     name: ClassVar[str] = ""
     turn_end: ClassVar[str] = ""
     stop: ClassVar[tuple[str, ...]] = ()
-    arguments: ClassVar[Literal["dict", "str"]] = "dict"
     kwargs: ClassVar[tuple[str, ...]] = ()
     models: ClassVar[tuple[str, ...]] = ()
 
@@ -67,50 +59,21 @@ class ChatTemplate:
         return ids[0]
 
     def conform(self, messages: list[Message]) -> list[dict[str, Any]]:
-        """Copy with tool-call arguments in the shape this template accepts.
-
-        OpenAI clients send `arguments` as a JSON string. Most templates index it
-        as a mapping and break on the string; DeepSeek's paste it as text and
-        would print a mapping's repr. Only the direction differs by family.
-        """
+        """Copy `messages` with each tool call's `arguments` parsed into a dict, the shape HF templates read."""
         copies = cast(list[dict[str, Any]], copy.deepcopy(messages))
         for call in (c for m in copies for c in m.get("tool_calls") or []):
-            function = call["function"]
-            if self.arguments == "dict" and isinstance(function["arguments"], str):
-                function["arguments"] = json.loads(function["arguments"])
-            elif self.arguments == "str" and not isinstance(function["arguments"], str):
-                function["arguments"] = json.dumps(function["arguments"])
+            if isinstance(call["function"]["arguments"], str):
+                call["function"]["arguments"] = json.loads(call["function"]["arguments"])
         return copies
 
-    @overload
     def apply(
         self,
         messages: list[Message],
         tools: list[ToolSchema] | None = None,
         *,
         add_generation_prompt: bool = True,
-        tokenize: Literal[True] = True,
-    ) -> list[int]: ...
-
-    @overload
-    def apply(
-        self,
-        messages: list[Message],
-        tools: list[ToolSchema] | None = None,
-        *,
-        add_generation_prompt: bool = True,
-        tokenize: Literal[False],
-    ) -> str: ...
-
-    def apply(
-        self,
-        messages: list[Message],
-        tools: list[ToolSchema] | None = None,
-        *,
-        add_generation_prompt: bool = True,
-        tokenize: bool = True,
-    ) -> list[int] | str:
-        """`apply_chat_template` with this family's argument shape and kwargs baked in."""
+    ) -> str:
+        """Apply the tokenizer's built-in chat template with this family's argument shape and kwargs baked in."""
         text = self.tokenizer.apply_chat_template(
             self.conform(messages),
             tools=cast(Any, tools) or None,
@@ -118,77 +81,62 @@ class ChatTemplate:
             tokenize=False,
             **self._kwargs,
         )
-        return self.encode(cast(str, text)) if tokenize else cast(str, text)
+        return cast(str, text)
 
-    def delta(
+    def stub(self, messages: list[PromptMessage], tool_calls: Iterable[ToolCall] | None) -> list[Message]:
+        """A stub history to put before `messages` so the chat template will render them."""
+        stub: list[Message] = [
+            SystemMessage(role="system", content="tokin-stub-system"),
+            UserMessage(role="user", content="tokin-stub-user"),
+        ]
+        if messages[0]["role"] == "tool":
+            if not tool_calls:
+                raise TemplateError("tool results need the tool_calls they answer")
+            # A non-empty reasoning keeps the think block in place whether or not this turn is the last one.
+            stub.append(
+                AssistantMessage(role="assistant", content="", reasoning_content=" ", tool_calls=list(tool_calls))
+            )
+        return stub
+
+    def apply_after_stub(
         self,
-        messages: list[Message],
+        messages: list[PromptMessage],
         tools: list[ToolSchema] | None = None,
         *,
         tool_calls: Iterable[ToolCall] | None = None,
-    ) -> list[int]:
-        """Ids for `messages`, the ones after the last assistant turn, ready to follow it.
+        add_generation_prompt: bool,
+    ) -> str:
+        """Apply the chat template to `messages` alone by rendering them after a stub history and subtracting it."""
+        stub = self.stub(messages, tool_calls)
+        roles = [m["role"] for m in messages]
+        try:
+            before = self.apply(stub, tools, add_generation_prompt=False)
+            after = self.apply([*stub, *messages], tools, add_generation_prompt=add_generation_prompt)
+        except Exception as e:
+            raise TemplateError(f"template refuses {roles}: {e}") from e
+        if not after.startswith(before):
+            raise TemplateError(f"template rewrites earlier turns when appending {roles}")
+        grown = after[len(before) :]
+        if any(isinstance(c, str) and c and c not in grown for c in (m.get("content") for m in messages)):
+            raise TemplateError(f"template drops {roles}")
+        return grown
 
-        Each message is rendered against a two-message stub instead of the real
-        history, so the template never gets to rewrite earlier turns. Tool results
-        go behind the `tool_calls` they answer: several templates refuse a bare
-        tool message, and one renders the call id.
-        """
-        ids: list[int] = []
-        groups = [list(g) for _, g in itertools.groupby(messages, key=lambda m: m["role"] == "tool")]
-        for i, group in enumerate(groups):
-            stub: list[Message] = [*STUB]
-            if group[0]["role"] == "tool":
-                if not tool_calls:
-                    raise RenderError("tool results need the tool_calls they answer")
-                # A non-empty reasoning keeps the think block in place whether or not this turn is the last.
-                stub.append(
-                    {
-                        "role": "assistant",
-                        "content": "",
-                        "reasoning_content": " ",
-                        "tool_calls": list(tool_calls),
-                    }
-                )
-            roles = [m["role"] for m in group]
-            try:
-                before = self.apply(stub, tools, add_generation_prompt=False, tokenize=False)
-                after = self.apply(stub + group, tools, add_generation_prompt=i == len(groups) - 1, tokenize=False)
-            except Exception as e:
-                raise RenderError(f"template refuses {roles}: {e}") from e
-            if not after.startswith(before):
-                raise RenderError(f"template rewrites earlier turns when appending {roles}")
-            grown = after[len(before) :]
-            # A template that skips a role renders nothing for it, and the harness would never learn.
-            contents = [m.get("content") for m in group]
-            if any(isinstance(c, str) and c and c not in grown for c in contents):
-                raise RenderError(f"template drops {roles}")
-            ids += self.encode(grown)
-        return ids
-
-    def extend(
+    def apply_increment(
         self,
-        prompt_ids: list[int],
-        completion_ids: list[int],
-        messages: list[Message],
+        messages: list[PromptMessage],
         tools: list[ToolSchema] | None = None,
         *,
         tool_calls: Iterable[ToolCall] | None = None,
-    ) -> list[int]:
-        """The next prompt: the served ids, the turn end the model left unfinished, then `messages`.
-
-        Sampled ids are never altered, and the result is what the template itself
-        would have written. A stop token that contradicts what follows, such as a
-        secondary eos or the opener of a different role, is a `RenderError`: the
-        conversation has to restart from a full render.
-        """
-        delta = self.delta(messages, tools, tool_calls=tool_calls)
-        end = self.turn_end_ids
-        k = max(k for k in range(len(end) + 1) if completion_ids[len(completion_ids) - k :] == end[:k])
-        stopped = bool(completion_ids) and completion_ids[-1] in self.stop_ids
-        if stopped and k == 0:
-            if not end and delta and completion_ids[-1] == delta[0]:
-                delta = delta[1:]
-            else:
-                raise RenderError(f"model stopped on id {completion_ids[-1]}, which the template cannot continue from")
-        return prompt_ids + completion_ids + end[k:] + delta
+    ) -> str:
+        """Apply the chat template to `messages` as the next increment of a multi-turn rollout."""
+        results = list(itertools.takewhile(lambda m: m["role"] == "tool", messages))
+        rest = messages[len(results) :]
+        if any(m["role"] == "tool" for m in rest):
+            raise TemplateError("tool results come before any other message")
+        # The model stops on the turn end's first token and never writes the rest, so the increment starts with it.
+        text = cast(str, self.tokenizer.decode(self.turn_end_ids[1:]))
+        if results:
+            text += self.apply_after_stub(results, tools, tool_calls=tool_calls, add_generation_prompt=not rest)
+        if rest:
+            text += self.apply_after_stub(rest, tools, add_generation_prompt=True)
+        return text

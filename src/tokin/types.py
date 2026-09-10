@@ -17,12 +17,14 @@ class AssistantMessage(_AssistantMessage, total=False):
     reasoning_content: str
 
 
-type Message = DeveloperMessage | SystemMessage | UserMessage | AssistantMessage | ToolMessage
+type PromptMessage = DeveloperMessage | SystemMessage | UserMessage | ToolMessage
+type Message = PromptMessage | AssistantMessage
 
 __all__ = [
     "AssistantMessage",
     "DeveloperMessage",
     "Message",
+    "PromptMessage",
     "SystemMessage",
     "ToolCall",
     "ToolMessage",
