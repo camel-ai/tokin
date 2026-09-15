@@ -14,4 +14,6 @@ class GLMChatTemplate(ChatTemplate):
         "zai-org/GLM-5",
         "zai-org/GLM-5.1",
         "zai-org/GLM-5.2",
+        "zai-org/GLM-5.3",
+        "zai-org/GLM-5.3-Flash",
     )

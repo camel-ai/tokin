@@ -8,7 +8,7 @@ from transformers import AutoConfig, AutoTokenizer, GenerationConfig
 from tokin.template import TemplateError
 from tokin.templates import TEMPLATES, get_template
 from tokin.templates.glm import GLMChatTemplate
-from tokin.templates.qwen import QwenChatTemplate
+from tokin.templates.qwen import Qwen35ChatTemplate, QwenChatTemplate
 
 TOOLS = [
     {
@@ -52,7 +52,7 @@ SCENARIOS = {
     ),
 }
 # Qwen3.5 raises on any system message that is not the first; GLM never stops on <|system|>. Both fork.
-REFUSES_MID_SYSTEM = {"Qwen/Qwen3.5-2B", "Qwen/Qwen3.5-4B", "Qwen/Qwen3.6-27B", *GLMChatTemplate.models}
+REFUSES_MID_SYSTEM = {*Qwen35ChatTemplate.models, *GLMChatTemplate.models}
 
 
 def test_apply_matches_the_tokenizer(template):
