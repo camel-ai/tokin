@@ -13,4 +13,4 @@ def get(name: str) -> type[ChatTemplate]:
     raise ValueError(f"unknown chat template {name!r}; known: {[t.name for t in TEMPLATES]}")
 
 
-__all__ = ["GLM", "TEMPLATES", "Qwen", "get"]
+__all__ = ["TEMPLATES", "GLMChatTemplate", "QwenChatTemplate", "get"]

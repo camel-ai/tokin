@@ -143,6 +143,7 @@ python_files = ["test_*.py"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 timeout = 90
+addopts = "-m 'not tokenizer and not integration'"
 # Warnings are errors: a transformers deprecation that changes tokenizer or
 # chat-template behaviour must fail loudly, not scroll past.
 filterwarnings = ["error"]

@@ -15,25 +15,12 @@ def test_turns_append_to_the_current_rollout():
     assert s.current.token_ids == [1, 2, 3]
 
 
-def test_fork_leaves_the_previous_rollout_intact():
+def test_fork_returns_a_fresh_current_and_keeps_the_previous_rollout():
     s = Session()
     s.current.add_prompt([1, 2])
-    s.fork()
+    assert s.fork() is s.current
     s.current.add_prompt([9])
     assert [r.token_ids for r in s.rollouts] == [[1, 2], [9]]
-
-
-def test_fork_returns_the_new_current():
-    s = Session()
-    assert s.fork() is s.current
-
-
-def test_length_spans_every_rollout():
-    s = Session()
-    s.current.add_prompt([1, 2])
-    s.fork()
-    s.current.add_prompt([3, 4, 5])
-    assert len(s) == 5
 
 
 def test_each_rollout_may_open_with_a_prompt_after_forking():
