@@ -4,7 +4,7 @@ import jinja2
 import pytest
 
 from tokin.template import ChatTemplate, TemplateError
-from tokin.templates import get
+from tokin.templates import get_template
 
 # One private-use character per control token, so each is a single id.
 START, END = "", ""
@@ -82,7 +82,7 @@ def test_unknown_kwarg_is_rejected():
 
 def test_stop_tokens_must_be_single_ids():
     with pytest.raises(ValueError, match="not one"):
-        get("qwen")(FakeTokenizer())
+        get_template("qwen")(FakeTokenizer())
 
 
 class TestApplyIncrement:
@@ -123,6 +123,14 @@ class TestApplyAfterStub:
             ChatML(FakeTokenizer(hoisting)).apply_increment([SYSTEM])
 
 
-def test_get_rejects_an_unknown_name():
-    with pytest.raises(ValueError, match="unknown chat template"):
-        get("gpt2")
+class TestGetTemplate:
+    def test_unknown_name(self):
+        with pytest.raises(ValueError, match="unknown chat template"):
+            get_template("gpt2")
+
+    def test_module_path(self):
+        assert get_template("tokin.templates.qwen:QwenChatTemplate") is get_template("qwen")
+
+    def test_non_template_path(self):
+        with pytest.raises(TypeError, match="not a ChatTemplate"):
+            get_template("tokin.template:TemplateError")
