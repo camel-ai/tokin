@@ -6,7 +6,7 @@ from transformers import AutoTokenizer
 from tokin.templates import TEMPLATES
 
 HERE = Path(__file__).parent
-CASES = [(template, model) for template in TEMPLATES for model in template.models]
+CASES = [(template, model) for template in TEMPLATES.values() for model in template.models]
 
 
 def pytest_collection_modifyitems(items):

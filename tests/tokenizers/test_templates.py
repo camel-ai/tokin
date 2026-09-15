@@ -6,7 +6,9 @@ from jinja2 import meta
 from transformers import AutoConfig, AutoTokenizer, GenerationConfig
 
 from tokin.template import TemplateError
-from tokin.templates import TEMPLATES, GLMChatTemplate, QwenChatTemplate, get
+from tokin.templates import TEMPLATES, get_template
+from tokin.templates.glm import GLMChatTemplate
+from tokin.templates.qwen import QwenChatTemplate
 
 TOOLS = [
     {
@@ -93,11 +95,11 @@ def test_declared_eos_are_stop_tokens(template):
     assert set(eos if isinstance(eos, list) else [eos]) <= template.stop_ids
 
 
-def test_get_returns_the_family_of_each_model(template):
-    assert get(template.tokenizer.name_or_path) is type(template)
+def test_get_template_returns_the_family_of_each_model(template):
+    assert get_template(template.tokenizer.name_or_path) is type(template)
 
 
-@pytest.mark.parametrize("family", TEMPLATES, ids=lambda t: t.name)
+@pytest.mark.parametrize("family", TEMPLATES.values(), ids=lambda t: t.name)
 def test_declared_kwargs_are_read_by_some_template_of_the_family(family):
     env = jinja2.Environment(extensions=["jinja2.ext.loopcontrols"])
     read = set()
