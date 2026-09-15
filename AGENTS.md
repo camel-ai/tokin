@@ -113,16 +113,14 @@ A family is one chat template lineage: a `ChatTemplate` subclass under
 checkpoints it was verified against.
 
 A family is named for the generation that introduced its template; later
-generations that keep it are appended to `models`, so `qwen3.5` covers Qwen3.6
+generations that keep it are appended to `models`, so `qwen35` covers Qwen3.6
 and Qwen3.8 the way `llama3` covers 3.3 everywhere. A generation that changes
 the template gets a new family, whatever it changed. Names describe the start of
 a lineage, not a property of it, so they don't go stale.
 
 `models` lists the mainline of a vendor completely, base and instruct alike;
 special-purpose variants (Coder, VL, Math, QwQ, …) are left out until someone
-needs them and then get a family of their own. `scripts/census.py <org>` groups
-every template the vendor publishes and marks what is listed, which is how a new
-release or a missing checkpoint gets noticed.
+needs them and then get a family of their own.
 
 ## Tests
 
