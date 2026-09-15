@@ -2,9 +2,9 @@ import importlib
 
 from ..template import ChatTemplate
 from .glm import GLMChatTemplate
-from .qwen import QwenChatTemplate
+from .qwen import Qwen35ChatTemplate, QwenChatTemplate
 
-TEMPLATES: dict[str, type[ChatTemplate]] = {t.name: t for t in (QwenChatTemplate, GLMChatTemplate)}
+TEMPLATES: dict[str, type[ChatTemplate]] = {t.name: t for t in (QwenChatTemplate, Qwen35ChatTemplate, GLMChatTemplate)}
 
 
 def get_template(name: str) -> type[ChatTemplate]:
