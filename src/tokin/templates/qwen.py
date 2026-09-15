@@ -43,7 +43,7 @@ class QwenChatTemplate(ChatTemplate):
 class Qwen35ChatTemplate(ChatTemplate):
     """Qwen3.5 onwards, which write tool calls as `<function=…>` XML inside `<tool_call>`."""
 
-    name = "qwen3.5"
+    name = "qwen35"
     turn_end = "<|im_end|>\n"
     stop = ("<|im_end|>", "<|endoftext|>")
     kwargs = ("enable_thinking", "preserve_thinking", "add_vision_id")
