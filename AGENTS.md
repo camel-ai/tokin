@@ -108,6 +108,29 @@ Single backticks around identifiers and endpoints: `input_ids`, not
 
 ## Tests
 
+Every test answers one question from a fixed list; a test with no question is
+not written:
+
+- **Declarations** — a family's stated facts hold against the real tokenizer.
+- **Behaviour** — one contract per method, on a fake tokenizer.
+- **Properties** — invariants across methods on real tokenizers. The one that
+  matters most: the increment's ids are a suffix of the full render's ids.
+- **Refusals** — one input per error contract, asserting the exception and its
+  message.
+
+Layout follows what a test needs, and only that decides whether it runs by
+default:
+
+- `tests/*.py` needs nothing and runs on every commit. The file name is the
+  module under test.
+- `tests/tokenizers/` needs real tokenizers (network once, then the cache); its
+  `conftest.py` marks everything there `tokenizer`.
+- `tests/integration/` needs a running inference server; marked `integration`,
+  run by hand.
+
+`addopts` skips the last two. The same module at another layer keeps its file
+name and changes directory.
+
 Default to module-level test functions, no class grouping — the name carries the
 context.
 

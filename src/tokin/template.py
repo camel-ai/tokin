@@ -45,7 +45,6 @@ class ChatTemplate:
             raise ValueError(f"{self.name or type(self).__name__} takes no kwarg named {sorted(unknown)}")
         self._kwargs = kwargs
         self.stop_ids = frozenset(self.token_id(s) for s in self.stop)
-        self.turn_end_ids = self.encode(self.turn_end)
 
     def encode(self, text: str) -> list[int]:
         """Never adds special tokens: the template already wrote the ones it wants."""
@@ -116,10 +115,7 @@ class ChatTemplate:
             raise TemplateError(f"template refuses {roles}: {e}") from e
         if not after.startswith(before):
             raise TemplateError(f"template rewrites earlier turns when appending {roles}")
-        grown = after[len(before) :]
-        if any(isinstance(c, str) and c and c not in grown for c in (m.get("content") for m in messages)):
-            raise TemplateError(f"template drops {roles}")
-        return grown
+        return after[len(before) :]
 
     def apply_increment(
         self,
@@ -133,10 +129,13 @@ class ChatTemplate:
         rest = messages[len(results) :]
         if any(m["role"] == "tool" for m in rest):
             raise TemplateError("tool results come before any other message")
-        # The model stops on the turn end's first token and never writes the rest, so the increment starts with it.
-        text = cast(str, self.tokenizer.decode(self.turn_end_ids[1:]))
+        text = self.turn_end
         if results:
             text += self.apply_after_stub(results, tools, tool_calls=tool_calls, add_generation_prompt=not rest)
         if rest:
             text += self.apply_after_stub(rest, tools, add_generation_prompt=True)
-        return text
+        # The model stopped on the token that opens the increment, so the prompt already has it.
+        for s in self.stop:
+            if text.startswith(s):
+                return text[len(s) :]
+        raise TemplateError(f"the increment opens with {text[:16]!r}, which the model never stops on")
