@@ -5,6 +5,7 @@ import pytest
 
 from tokin.template import ChatTemplate, TemplateError
 from tokin.templates import get_template
+from tokin.tool_parsers import HermesToolParser
 
 # One private-use character per control token, so each is a single id.
 START, END = "", ""
@@ -54,6 +55,7 @@ class ChatML(ChatTemplate):
     turn_end = f"{END}\n"
     reasoning_start = "<think>"
     reasoning_end = "</think>"
+    tool_parser = HermesToolParser()
     stop = (END,)
     kwargs = ("enable_thinking",)
 
@@ -150,6 +152,23 @@ class TestParse:
 
     def test_stray_close_tag_stays_in_content(self):
         assert ChatML(FakeTokenizer()).parse("ok </think> x") == {"role": "assistant", "content": "ok </think> x"}
+
+    def test_tool_calls(self):
+        got = ChatML(FakeTokenizer()).parse(
+            'Checking.\n<tool_call>\n{"name": "f", "arguments": {"x": 1}}\n</tool_call>'
+        )
+        [call] = got["tool_calls"]
+        assert got["content"] == "Checking." and call["id"].startswith("call_") and call["type"] == "function"
+        assert call["function"] == {"name": "f", "arguments": '{"x": 1}'}
+
+    def test_tool_calls_alone_leave_no_content(self):
+        got = ChatML(FakeTokenizer()).parse('<tool_call>\n{"name": "f", "arguments": {}}\n</tool_call>')
+        assert got["content"] is None and len(got["tool_calls"]) == 1
+
+    def test_tool_call_drafted_in_reasoning_is_not_a_call(self):
+        text = '<think>\n<tool_call>\n{"name": "f", "arguments": {}}\n</tool_call>\n</think>\n\nok'
+        got = ChatML(FakeTokenizer()).parse(text)
+        assert "tool_calls" not in got and got["content"] == "ok"
 
     def test_family_without_reasoning_block(self):
         class NoThink(ChatML):

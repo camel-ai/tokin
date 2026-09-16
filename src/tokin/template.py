@@ -8,7 +8,16 @@ from typing import Any, ClassVar, cast
 
 from transformers import PreTrainedTokenizerBase
 
-from .types import AssistantMessage, Message, PromptMessage, SystemMessage, ToolCall, ToolSchema, UserMessage
+from .tool_parser import ToolParser
+from .types import (
+    AssistantMessage,
+    Message,
+    PromptMessage,
+    SystemMessage,
+    ToolCall,
+    ToolSchema,
+    UserMessage,
+)
 
 
 class TemplateError(RuntimeError):
@@ -27,6 +36,8 @@ class ChatTemplate:
             `"<|im_end|>\n"`. Empty when a turn ends by the next one starting.
         reasoning_start, reasoning_end (str): The tags around reasoning, such as `"<think>"` and
             `"</think>"`. Empty when the family has no reasoning block.
+        tool_parser (ToolParser | None): The grammar the family writes tool calls in; `None` when
+            it has none.
         stop (tuple[str, ...]): Every token the model may stop on; the server gets them as stop ids.
         kwargs (tuple[str, ...]): Keyword arguments the template reads, such as `enable_thinking`;
             HF passes them as `**kwargs`, the wire as `chat_template_kwargs`, and any other name
@@ -39,6 +50,7 @@ class ChatTemplate:
     turn_end: ClassVar[str] = ""
     reasoning_start: ClassVar[str] = ""
     reasoning_end: ClassVar[str] = ""
+    tool_parser: ClassVar[ToolParser | None] = None
     stop: ClassVar[tuple[str, ...]] = ()
     kwargs: ClassVar[tuple[str, ...]] = ()
     models: ClassVar[tuple[str, ...]] = ()
@@ -144,11 +156,15 @@ class ChatTemplate:
                 return text[len(s) :]
         raise TemplateError(f"the increment opens with {text[:16]!r}, which the model never stops on")
 
-    def parse(self, response: str, *, reasoning_open: bool = False) -> AssistantMessage:
+    def parse(
+        self, response: str, tools: list[ToolSchema] | None = None, *, reasoning_open: bool = False
+    ) -> AssistantMessage:
         """Read back the assistant message from what the model sampled.
 
         Args:
             response (str): The sampled text without its stop token.
+            tools (list[ToolSchema] | None): The schemas the calls may name; XML grammars type
+                their argument values by them.
             reasoning_open (bool): The prompt wrote `reasoning_start` and not `reasoning_end`, so
                 `response` begins inside the reasoning block.
         """
@@ -158,6 +174,10 @@ class ChatTemplate:
             head, _, text = text.partition(self.reasoning_end)
             if reasoning := head.removeprefix(self.reasoning_start).strip():
                 message["reasoning_content"] = reasoning
+        if self.tool_parser:
+            text, calls = self.tool_parser.parse(text, tools)
+            if calls:
+                message["tool_calls"] = calls
         if content := text.strip():
             message["content"] = content
         return message
