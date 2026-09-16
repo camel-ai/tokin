@@ -1,4 +1,5 @@
-from ..template import ChatTemplate
+from ..chat_template import ChatTemplate
+from ..tool_parsers import HermesToolParser, QwenXMLToolParser
 
 
 class QwenChatTemplate(ChatTemplate):
@@ -6,6 +7,9 @@ class QwenChatTemplate(ChatTemplate):
 
     name = "qwen"
     turn_end = "<|im_end|>\n"
+    reasoning_start = "<think>"
+    reasoning_end = "</think>"
+    tool_parser = HermesToolParser()
     stop = ("<|im_end|>", "<|endoftext|>")
     kwargs = ("enable_thinking",)
     models = (
@@ -45,6 +49,9 @@ class Qwen35ChatTemplate(ChatTemplate):
 
     name = "qwen35"
     turn_end = "<|im_end|>\n"
+    reasoning_start = "<think>"
+    reasoning_end = "</think>"
+    tool_parser = QwenXMLToolParser()
     stop = ("<|im_end|>", "<|endoftext|>")
     kwargs = ("enable_thinking", "preserve_thinking", "add_vision_id")
     models = (

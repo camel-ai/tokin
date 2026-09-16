@@ -8,10 +8,19 @@ from typing import Any, ClassVar, cast
 
 from transformers import PreTrainedTokenizerBase
 
-from .types import AssistantMessage, Message, PromptMessage, SystemMessage, ToolCall, ToolSchema, UserMessage
+from .tool_parser import ToolParser
+from .types import (
+    AssistantMessage,
+    Message,
+    PromptMessage,
+    SystemMessage,
+    ToolCall,
+    ToolSchema,
+    UserMessage,
+)
 
 
-class TemplateError(RuntimeError):
+class ChatTemplateError(RuntimeError):
     """The template cannot continue a served prompt with these messages; start over from `apply`."""
 
 
@@ -25,6 +34,10 @@ class ChatTemplate:
         name (str): Registry key, such as `"qwen"`.
         turn_end (str): What the template writes after assistant content, such as
             `"<|im_end|>\n"`. Empty when a turn ends by the next one starting.
+        reasoning_start, reasoning_end (str): The tags around reasoning, such as `"<think>"` and
+            `"</think>"`. Empty when the family has no reasoning block.
+        tool_parser (ToolParser | None): The grammar the family writes tool calls in; `None` when
+            it has none.
         stop (tuple[str, ...]): Every token the model may stop on; the server gets them as stop ids.
         kwargs (tuple[str, ...]): Keyword arguments the template reads, such as `enable_thinking`;
             HF passes them as `**kwargs`, the wire as `chat_template_kwargs`, and any other name
@@ -35,6 +48,9 @@ class ChatTemplate:
 
     name: ClassVar[str] = ""
     turn_end: ClassVar[str] = ""
+    reasoning_start: ClassVar[str] = ""
+    reasoning_end: ClassVar[str] = ""
+    tool_parser: ClassVar[ToolParser | None] = None
     stop: ClassVar[tuple[str, ...]] = ()
     kwargs: ClassVar[tuple[str, ...]] = ()
     models: ClassVar[tuple[str, ...]] = ()
@@ -90,7 +106,7 @@ class ChatTemplate:
         ]
         if messages[0]["role"] == "tool":
             if not tool_calls:
-                raise TemplateError("tool results need the tool_calls they answer")
+                raise ChatTemplateError("tool results need the tool_calls they answer")
             # A non-empty reasoning keeps the think block in place whether or not this turn is the last one.
             stub.append(
                 AssistantMessage(role="assistant", content="", reasoning_content=" ", tool_calls=list(tool_calls))
@@ -112,9 +128,9 @@ class ChatTemplate:
             before = self.apply(stub, tools, add_generation_prompt=False)
             after = self.apply([*stub, *messages], tools, add_generation_prompt=add_generation_prompt)
         except Exception as e:
-            raise TemplateError(f"template refuses {roles}: {e}") from e
+            raise ChatTemplateError(f"template refuses {roles}: {e}") from e
         if not after.startswith(before):
-            raise TemplateError(f"template rewrites earlier turns when appending {roles}")
+            raise ChatTemplateError(f"template rewrites earlier turns when appending {roles}")
         return after[len(before) :]
 
     def apply_increment(
@@ -128,7 +144,7 @@ class ChatTemplate:
         results = list(itertools.takewhile(lambda m: m["role"] == "tool", messages))
         rest = messages[len(results) :]
         if any(m["role"] == "tool" for m in rest):
-            raise TemplateError("tool results come before any other message")
+            raise ChatTemplateError("tool results come before any other message")
         text = self.turn_end
         if results:
             text += self.apply_after_stub(results, tools, tool_calls=tool_calls, add_generation_prompt=not rest)
@@ -138,4 +154,30 @@ class ChatTemplate:
         for s in self.stop:
             if text.startswith(s):
                 return text[len(s) :]
-        raise TemplateError(f"the increment opens with {text[:16]!r}, which the model never stops on")
+        raise ChatTemplateError(f"the increment opens with {text[:16]!r}, which the model never stops on")
+
+    def parse(
+        self, response: str, tools: list[ToolSchema] | None = None, *, reasoning_open: bool = False
+    ) -> AssistantMessage:
+        """Read back the assistant message from what the model sampled.
+
+        Args:
+            response (str): The sampled text without its stop token.
+            tools (list[ToolSchema] | None): The schemas the calls may name; XML grammars type
+                their argument values by them.
+            reasoning_open (bool): The prompt wrote `reasoning_start` and not `reasoning_end`, so
+                `response` begins inside the reasoning block.
+        """
+        text = response.lstrip()
+        message: AssistantMessage = {"role": "assistant", "content": None}
+        if self.reasoning_end and (reasoning_open or text.startswith(self.reasoning_start)):
+            head, _, text = text.partition(self.reasoning_end)
+            if reasoning := head.removeprefix(self.reasoning_start).strip():
+                message["reasoning_content"] = reasoning
+        if self.tool_parser:
+            text, calls = self.tool_parser.parse(text, tools)
+            if calls:
+                message["tool_calls"] = calls
+        if content := text.strip():
+            message["content"] = content
+        return message

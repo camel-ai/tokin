@@ -1,8 +1,12 @@
-from ..template import ChatTemplate
+from ..chat_template import ChatTemplate
+from ..tool_parsers import GLMToolParser
 
 
 class GLMChatTemplate(ChatTemplate):
     name = "glm"
+    reasoning_start = "<think>"
+    reasoning_end = "</think>"
+    tool_parser = GLMToolParser()
     stop = ("<|user|>", "<|observation|>", "<|endoftext|>")
     kwargs = ("enable_thinking", "clear_thinking", "reasoning_effort")
     models = (

@@ -3,8 +3,9 @@ from __future__ import annotations
 import jinja2
 import pytest
 
-from tokin.template import ChatTemplate, TemplateError
-from tokin.templates import get_template
+from tokin.chat_template import ChatTemplate, ChatTemplateError
+from tokin.chat_templates import get_chat_template
+from tokin.tool_parsers import HermesToolParser
 
 # One private-use character per control token, so each is a single id.
 START, END = "", ""
@@ -52,6 +53,9 @@ class FakeTokenizer:
 class ChatML(ChatTemplate):
     name = "chatml"
     turn_end = f"{END}\n"
+    reasoning_start = "<think>"
+    reasoning_end = "</think>"
+    tool_parser = HermesToolParser()
     stop = (END,)
     kwargs = ("enable_thinking",)
 
@@ -82,7 +86,7 @@ def test_unknown_kwarg_is_rejected():
 
 def test_stop_tokens_must_be_single_ids():
     with pytest.raises(ValueError, match="not one"):
-        get_template("qwen")(FakeTokenizer())
+        get_chat_template("qwen")(FakeTokenizer())
 
 
 class TestApplyIncrement:
@@ -91,18 +95,18 @@ class TestApplyIncrement:
         assert got == f"\n{START}tool\n18C<id>c1</id>{END}\n{START}user\nhi{END}\n{START}assistant\n"
 
     def test_tool_results_need_their_calls(self):
-        with pytest.raises(TemplateError, match="tool_calls"):
+        with pytest.raises(ChatTemplateError, match="tool_calls"):
             ChatML(FakeTokenizer()).apply_increment([TOOL], TOOLS)
 
     def test_tool_results_come_first(self):
-        with pytest.raises(TemplateError, match="before"):
+        with pytest.raises(ChatTemplateError, match="before"):
             ChatML(FakeTokenizer()).apply_increment([USER, TOOL], TOOLS, tool_calls=CALLS)
 
     def test_opening_token_must_be_a_stop(self):
         class NoTurnEnd(ChatML):
             turn_end = ""
 
-        with pytest.raises(TemplateError, match="never stops on"):
+        with pytest.raises(ChatTemplateError, match="never stops on"):
             NoTurnEnd(FakeTokenizer()).apply_increment([USER])
 
 
@@ -112,25 +116,76 @@ class TestApplyAfterStub:
             "{%- for m in messages %}",
             "{%- for m in messages %}{% if m.role == 'system' and not loop.first %}{{ raise_exception('system first') }}{% endif %}",
         )
-        with pytest.raises(TemplateError, match="system first"):
+        with pytest.raises(ChatTemplateError, match="system first"):
             ChatML(FakeTokenizer(strict)).apply_increment([SYSTEM])
 
     def test_rewriting_earlier_turns_is_refused(self):
         hoisting = "{%- for m in messages if m.role == 'system' %}[{{ m.content }}]{% endfor %}" + CHATML.replace(
             "{%- for m in messages %}", "{%- for m in messages if m.role != 'system' %}"
         )
-        with pytest.raises(TemplateError, match="rewrites"):
+        with pytest.raises(ChatTemplateError, match="rewrites"):
             ChatML(FakeTokenizer(hoisting)).apply_increment([SYSTEM])
+
+
+class TestParse:
+    def test_think_block(self):
+        got = ChatML(FakeTokenizer()).parse("<think>\nhmm\n</think>\n\nok")
+        assert got == {"role": "assistant", "content": "ok", "reasoning_content": "hmm"}
+
+    def test_reasoning_left_open_by_the_prompt(self):
+        got = ChatML(FakeTokenizer()).parse("hmm\n</think>\n\nok", reasoning_open=True)
+        assert got == {"role": "assistant", "content": "ok", "reasoning_content": "hmm"}
+
+    def test_truncated_inside_open_reasoning(self):
+        got = ChatML(FakeTokenizer()).parse("hmm", reasoning_open=True)
+        assert got == {"role": "assistant", "content": None, "reasoning_content": "hmm"}
+
+    def test_empty_think_block(self):
+        assert ChatML(FakeTokenizer()).parse("<think>\n\n</think>\n\nok") == {"role": "assistant", "content": "ok"}
+
+    def test_unclosed_think(self):
+        got = ChatML(FakeTokenizer()).parse("<think>\nhmm")
+        assert got == {"role": "assistant", "content": None, "reasoning_content": "hmm"}
+
+    def test_no_think(self):
+        assert ChatML(FakeTokenizer()).parse("ok") == {"role": "assistant", "content": "ok"}
+
+    def test_stray_close_tag_stays_in_content(self):
+        assert ChatML(FakeTokenizer()).parse("ok </think> x") == {"role": "assistant", "content": "ok </think> x"}
+
+    def test_tool_calls(self):
+        got = ChatML(FakeTokenizer()).parse(
+            'Checking.\n<tool_call>\n{"name": "f", "arguments": {"x": 1}}\n</tool_call>'
+        )
+        [call] = got["tool_calls"]
+        assert got["content"] == "Checking." and call["id"].startswith("call_") and call["type"] == "function"
+        assert call["function"] == {"name": "f", "arguments": '{"x": 1}'}
+
+    def test_tool_calls_alone_leave_no_content(self):
+        got = ChatML(FakeTokenizer()).parse('<tool_call>\n{"name": "f", "arguments": {}}\n</tool_call>')
+        assert got["content"] is None and len(got["tool_calls"]) == 1
+
+    def test_tool_call_drafted_in_reasoning_is_not_a_call(self):
+        text = '<think>\n<tool_call>\n{"name": "f", "arguments": {}}\n</tool_call>\n</think>\n\nok'
+        got = ChatML(FakeTokenizer()).parse(text)
+        assert "tool_calls" not in got and got["content"] == "ok"
+
+    def test_family_without_reasoning_block(self):
+        class NoThink(ChatML):
+            reasoning_start = reasoning_end = ""
+
+        got = NoThink(FakeTokenizer()).parse("<think>hmm</think>ok")
+        assert got == {"role": "assistant", "content": "<think>hmm</think>ok"}
 
 
 class TestGetTemplate:
     def test_unknown_name(self):
         with pytest.raises(ValueError, match="unknown chat template"):
-            get_template("gpt2")
+            get_chat_template("gpt2")
 
     def test_module_path(self):
-        assert get_template("tokin.templates.qwen:QwenChatTemplate") is get_template("qwen")
+        assert get_chat_template("tokin.chat_templates.qwen:QwenChatTemplate") is get_chat_template("qwen")
 
     def test_non_template_path(self):
         with pytest.raises(TypeError, match="not a ChatTemplate"):
-            get_template("tokin.template:TemplateError")
+            get_chat_template("tokin.chat_template:ChatTemplateError")
