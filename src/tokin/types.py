@@ -3,6 +3,7 @@ from __future__ import annotations
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam as _AssistantMessage,
     ChatCompletionDeveloperMessageParam as DeveloperMessage,
+    ChatCompletionMessageFunctionToolCallParam as FunctionToolCall,
     ChatCompletionMessageToolCallUnionParam as ToolCall,
     ChatCompletionSystemMessageParam as SystemMessage,
     ChatCompletionToolMessageParam as ToolMessage,
@@ -23,6 +24,7 @@ type Message = PromptMessage | AssistantMessage
 __all__ = [
     "AssistantMessage",
     "DeveloperMessage",
+    "FunctionToolCall",
     "Message",
     "PromptMessage",
     "SystemMessage",

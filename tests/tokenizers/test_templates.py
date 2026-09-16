@@ -95,19 +95,61 @@ def test_declared_eos_are_stop_tokens(template):
     assert set(eos if isinstance(eos, list) else [eos]) <= template.stop_ids
 
 
-TURNS = {"reply": REPLY, "plain": {"role": "assistant", "content": "Sunny."}}
+TRIP_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "plan_trip",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "city": {"type": "string"},
+                "days": {"type": "integer"},
+                "code": {"type": "string"},
+                "units": {"type": "object"},
+            },
+        },
+    },
+}
+TYPED_CALL = {
+    "role": "assistant",
+    "content": "",
+    "reasoning_content": "hmm",
+    "tool_calls": [
+        {
+            "id": "call_9",
+            "type": "function",
+            "function": {
+                "name": "plan_trip",
+                "arguments": json.dumps({"city": "Paris", "days": 3, "code": "42", "units": {"temp": "C"}}),
+            },
+        }
+    ],
+}
+TURNS = {
+    "reply": REPLY,
+    "plain": {"role": "assistant", "content": "Sunny."},
+    "call": CALL,
+    "two calls": CALL2,
+    "typed call": TYPED_CALL,
+}
+
+
+def calls(message):
+    return [(c["function"]["name"], json.loads(c["function"]["arguments"])) for c in message.get("tool_calls", [])]
 
 
 @pytest.mark.parametrize("turn", TURNS.values(), ids=list(TURNS))
 def test_parse_reads_back_the_rendered_turn(template, turn):
-    prompt = template.apply([SYSTEM, USER])
-    full = template.apply([SYSTEM, USER, turn], add_generation_prompt=False)
+    tools = [*TOOLS, TRIP_TOOL]
+    prompt = template.apply([SYSTEM, USER], tools)
+    full = template.apply(template.conform([SYSTEM, USER, turn]), tools, add_generation_prompt=False)
     if not full.startswith(prompt):
         pytest.skip("the prompt's thinking mode does not match the turn")
     response = full[len(prompt) :].removesuffix(template.turn_end)
     reasoning_open = prompt.rfind(template.reasoning_start) > prompt.rfind(template.reasoning_end)
-    got = template.parse(response, reasoning_open=reasoning_open)
-    assert got["content"] == turn["content"]
+    got = template.parse(response, tools, reasoning_open=reasoning_open)
+    assert got["content"] == (turn["content"] or None)
+    assert calls(got) == calls(turn)
     reasoning = turn.get("reasoning_content")
     # Templates that render no reasoning for this turn (Qwen2.5, thinking off) must read none back.
     assert got.get("reasoning_content") == (reasoning if reasoning and reasoning in full else None)
