@@ -5,10 +5,10 @@ import pytest
 from jinja2 import meta
 from transformers import AutoConfig, AutoTokenizer, GenerationConfig
 
-from tokin.template import TemplateError
-from tokin.templates import TEMPLATES, get_template
-from tokin.templates.glm import GLMChatTemplate
-from tokin.templates.qwen import Qwen35ChatTemplate, QwenChatTemplate
+from tokin.chat_template import ChatTemplateError
+from tokin.chat_templates import CHAT_TEMPLATES, get_chat_template
+from tokin.chat_templates.glm import GLMChatTemplate
+from tokin.chat_templates.qwen import Qwen35ChatTemplate, QwenChatTemplate
 
 TOOLS = [
     {
@@ -67,7 +67,7 @@ def test_apply_matches_the_tokenizer(template):
 def test_increment_is_a_token_suffix_of_the_full_render(template, scenario):
     history, new, tools, tool_calls = scenario
     if new[0]["role"] == "system" and template.tokenizer.name_or_path in REFUSES_MID_SYSTEM:
-        with pytest.raises(TemplateError):
+        with pytest.raises(ChatTemplateError):
             template.apply_increment(new, tools, tool_calls=tool_calls)
         return
     increment = template.encode(template.apply_increment(new, tools, tool_calls=tool_calls))
@@ -156,10 +156,10 @@ def test_parse_reads_back_the_rendered_turn(template, turn):
 
 
 def test_get_template_returns_the_family_of_each_model(template):
-    assert get_template(template.tokenizer.name_or_path) is type(template)
+    assert get_chat_template(template.tokenizer.name_or_path) is type(template)
 
 
-@pytest.mark.parametrize("family", TEMPLATES.values(), ids=lambda t: t.name)
+@pytest.mark.parametrize("family", CHAT_TEMPLATES.values(), ids=lambda t: t.name)
 def test_declared_kwargs_are_read_by_some_template_of_the_family(family):
     env = jinja2.Environment(extensions=["jinja2.ext.loopcontrols"])
     read = set()

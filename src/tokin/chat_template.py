@@ -20,7 +20,7 @@ from .types import (
 )
 
 
-class TemplateError(RuntimeError):
+class ChatTemplateError(RuntimeError):
     """The template cannot continue a served prompt with these messages; start over from `apply`."""
 
 
@@ -106,7 +106,7 @@ class ChatTemplate:
         ]
         if messages[0]["role"] == "tool":
             if not tool_calls:
-                raise TemplateError("tool results need the tool_calls they answer")
+                raise ChatTemplateError("tool results need the tool_calls they answer")
             # A non-empty reasoning keeps the think block in place whether or not this turn is the last one.
             stub.append(
                 AssistantMessage(role="assistant", content="", reasoning_content=" ", tool_calls=list(tool_calls))
@@ -128,9 +128,9 @@ class ChatTemplate:
             before = self.apply(stub, tools, add_generation_prompt=False)
             after = self.apply([*stub, *messages], tools, add_generation_prompt=add_generation_prompt)
         except Exception as e:
-            raise TemplateError(f"template refuses {roles}: {e}") from e
+            raise ChatTemplateError(f"template refuses {roles}: {e}") from e
         if not after.startswith(before):
-            raise TemplateError(f"template rewrites earlier turns when appending {roles}")
+            raise ChatTemplateError(f"template rewrites earlier turns when appending {roles}")
         return after[len(before) :]
 
     def apply_increment(
@@ -144,7 +144,7 @@ class ChatTemplate:
         results = list(itertools.takewhile(lambda m: m["role"] == "tool", messages))
         rest = messages[len(results) :]
         if any(m["role"] == "tool" for m in rest):
-            raise TemplateError("tool results come before any other message")
+            raise ChatTemplateError("tool results come before any other message")
         text = self.turn_end
         if results:
             text += self.apply_after_stub(results, tools, tool_calls=tool_calls, add_generation_prompt=not rest)
@@ -154,7 +154,7 @@ class ChatTemplate:
         for s in self.stop:
             if text.startswith(s):
                 return text[len(s) :]
-        raise TemplateError(f"the increment opens with {text[:16]!r}, which the model never stops on")
+        raise ChatTemplateError(f"the increment opens with {text[:16]!r}, which the model never stops on")
 
     def parse(
         self, response: str, tools: list[ToolSchema] | None = None, *, reasoning_open: bool = False

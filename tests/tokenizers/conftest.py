@@ -3,10 +3,10 @@ from pathlib import Path
 import pytest
 from transformers import AutoTokenizer
 
-from tokin.templates import TEMPLATES
+from tokin.chat_templates import CHAT_TEMPLATES
 
 HERE = Path(__file__).parent
-CASES = [(template, model) for template in TEMPLATES.values() for model in template.models]
+CASES = [(template, model) for template in CHAT_TEMPLATES.values() for model in template.models]
 
 
 def pytest_collection_modifyitems(items):
