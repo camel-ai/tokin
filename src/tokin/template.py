@@ -25,6 +25,8 @@ class ChatTemplate:
         name (str): Registry key, such as `"qwen"`.
         turn_end (str): What the template writes after assistant content, such as
             `"<|im_end|>\n"`. Empty when a turn ends by the next one starting.
+        reasoning_start, reasoning_end (str): The tags around reasoning, such as `"<think>"` and
+            `"</think>"`. Empty when the family has no reasoning block.
         stop (tuple[str, ...]): Every token the model may stop on; the server gets them as stop ids.
         kwargs (tuple[str, ...]): Keyword arguments the template reads, such as `enable_thinking`;
             HF passes them as `**kwargs`, the wire as `chat_template_kwargs`, and any other name
@@ -35,6 +37,8 @@ class ChatTemplate:
 
     name: ClassVar[str] = ""
     turn_end: ClassVar[str] = ""
+    reasoning_start: ClassVar[str] = ""
+    reasoning_end: ClassVar[str] = ""
     stop: ClassVar[tuple[str, ...]] = ()
     kwargs: ClassVar[tuple[str, ...]] = ()
     models: ClassVar[tuple[str, ...]] = ()
@@ -139,3 +143,21 @@ class ChatTemplate:
             if text.startswith(s):
                 return text[len(s) :]
         raise TemplateError(f"the increment opens with {text[:16]!r}, which the model never stops on")
+
+    def parse(self, response: str, *, reasoning_open: bool = False) -> AssistantMessage:
+        """Read back the assistant message from what the model sampled.
+
+        Args:
+            response (str): The sampled text without its stop token.
+            reasoning_open (bool): The prompt wrote `reasoning_start` and not `reasoning_end`, so
+                `response` begins inside the reasoning block.
+        """
+        text = response.lstrip()
+        message: AssistantMessage = {"role": "assistant", "content": None}
+        if self.reasoning_end and (reasoning_open or text.startswith(self.reasoning_start)):
+            head, _, text = text.partition(self.reasoning_end)
+            if reasoning := head.removeprefix(self.reasoning_start).strip():
+                message["reasoning_content"] = reasoning
+        if content := text.strip():
+            message["content"] = content
+        return message

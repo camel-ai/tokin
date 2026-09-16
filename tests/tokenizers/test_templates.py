@@ -95,6 +95,24 @@ def test_declared_eos_are_stop_tokens(template):
     assert set(eos if isinstance(eos, list) else [eos]) <= template.stop_ids
 
 
+TURNS = {"reply": REPLY, "plain": {"role": "assistant", "content": "Sunny."}}
+
+
+@pytest.mark.parametrize("turn", TURNS.values(), ids=list(TURNS))
+def test_parse_reads_back_the_rendered_turn(template, turn):
+    prompt = template.apply([SYSTEM, USER])
+    full = template.apply([SYSTEM, USER, turn], add_generation_prompt=False)
+    if not full.startswith(prompt):
+        pytest.skip("the prompt's thinking mode does not match the turn")
+    response = full[len(prompt) :].removesuffix(template.turn_end)
+    reasoning_open = prompt.rfind(template.reasoning_start) > prompt.rfind(template.reasoning_end)
+    got = template.parse(response, reasoning_open=reasoning_open)
+    assert got["content"] == turn["content"]
+    reasoning = turn.get("reasoning_content")
+    # Templates that render no reasoning for this turn (Qwen2.5, thinking off) must read none back.
+    assert got.get("reasoning_content") == (reasoning if reasoning and reasoning in full else None)
+
+
 def test_get_template_returns_the_family_of_each_model(template):
     assert get_template(template.tokenizer.name_or_path) is type(template)
 
