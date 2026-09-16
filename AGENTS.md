@@ -41,8 +41,10 @@ Three tiers, most code being the first:
 - **A short paragraph**, only when a design choice would otherwise look arbitrary
   and someone might reasonably undo it.
 
-No `Args:` / `Returns:` sections — the signature carries the types and we don't
-generate API docs from docstrings. Don't restate the function name.
+No `Args:` / `Returns:` sections to restate types — the signature carries them and
+we don't generate API docs from docstrings. Use one only when two or more
+parameters each carry a constraint the signature can't say; a single such
+parameter goes in the one-line form. Don't restate the function name.
 
 Roughly half the functions in a mature codebase carry no docstring at all, and
 that is the target rather than a gap. `D1` stays unselected.

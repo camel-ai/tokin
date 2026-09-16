@@ -52,6 +52,8 @@ class FakeTokenizer:
 class ChatML(ChatTemplate):
     name = "chatml"
     turn_end = f"{END}\n"
+    reasoning_start = "<think>"
+    reasoning_end = "</think>"
     stop = (END,)
     kwargs = ("enable_thinking",)
 
@@ -121,6 +123,40 @@ class TestApplyAfterStub:
         )
         with pytest.raises(TemplateError, match="rewrites"):
             ChatML(FakeTokenizer(hoisting)).apply_increment([SYSTEM])
+
+
+class TestParse:
+    def test_think_block(self):
+        got = ChatML(FakeTokenizer()).parse("<think>\nhmm\n</think>\n\nok")
+        assert got == {"role": "assistant", "content": "ok", "reasoning_content": "hmm"}
+
+    def test_reasoning_left_open_by_the_prompt(self):
+        got = ChatML(FakeTokenizer()).parse("hmm\n</think>\n\nok", reasoning_open=True)
+        assert got == {"role": "assistant", "content": "ok", "reasoning_content": "hmm"}
+
+    def test_truncated_inside_open_reasoning(self):
+        got = ChatML(FakeTokenizer()).parse("hmm", reasoning_open=True)
+        assert got == {"role": "assistant", "content": None, "reasoning_content": "hmm"}
+
+    def test_empty_think_block(self):
+        assert ChatML(FakeTokenizer()).parse("<think>\n\n</think>\n\nok") == {"role": "assistant", "content": "ok"}
+
+    def test_unclosed_think(self):
+        got = ChatML(FakeTokenizer()).parse("<think>\nhmm")
+        assert got == {"role": "assistant", "content": None, "reasoning_content": "hmm"}
+
+    def test_no_think(self):
+        assert ChatML(FakeTokenizer()).parse("ok") == {"role": "assistant", "content": "ok"}
+
+    def test_stray_close_tag_stays_in_content(self):
+        assert ChatML(FakeTokenizer()).parse("ok </think> x") == {"role": "assistant", "content": "ok </think> x"}
+
+    def test_family_without_reasoning_block(self):
+        class NoThink(ChatML):
+            reasoning_start = reasoning_end = ""
+
+        got = NoThink(FakeTokenizer()).parse("<think>hmm</think>ok")
+        assert got == {"role": "assistant", "content": "<think>hmm</think>ok"}
 
 
 class TestGetTemplate:

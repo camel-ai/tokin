@@ -3,6 +3,8 @@ from ..template import ChatTemplate
 
 class GLMChatTemplate(ChatTemplate):
     name = "glm"
+    reasoning_start = "<think>"
+    reasoning_end = "</think>"
     stop = ("<|user|>", "<|observation|>", "<|endoftext|>")
     kwargs = ("enable_thinking", "clear_thinking", "reasoning_effort")
     models = (
