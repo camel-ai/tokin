@@ -73,12 +73,40 @@ class ChatTemplate:
             raise ValueError(f"{token!r} is {len(ids)} tokens for this tokenizer, not one")
         return ids[0]
 
+    def order_tool_results(self, messages: list[dict[str, Any]]) -> None:
+        """Put each run of tool results in its calls' order, in place, and refuse any other arrangement.
+
+        OpenAI's rule: a result follows the assistant turn whose call it answers, one result per
+        call, nothing in between. Templates without call ids pair the two by position, so any
+        other arrangement mispairs them without a word. A turn with no results yet passes; the
+        stub renders one.
+        """
+        i = 0
+        while i < len(messages):
+            message = messages[i]
+            i += 1
+            if message["role"] == "tool":
+                raise ValueError(f"tool result {message['tool_call_id']!r} does not follow the calls it answers")
+            if calls := message.get("tool_calls"):
+                order = [call["id"] for call in calls]
+                j = i
+                while j < len(messages) and messages[j]["role"] == "tool":
+                    j += 1
+                results = messages[i:j]
+                if results and sorted(r["tool_call_id"] for r in results) != sorted(order):
+                    raise ValueError(
+                        f"tool results {[r['tool_call_id'] for r in results]} do not answer {order} one each"
+                    )
+                messages[i:j] = sorted(results, key=lambda r: order.index(r["tool_call_id"]))
+                i = j
+
     def conform(self, messages: list[Message]) -> list[dict[str, Any]]:
-        """Copy `messages` with each tool call's `arguments` parsed into a dict, the shape HF templates read."""
+        """Copy `messages` into the shape HF templates read: `arguments` as dicts, tool results in their calls' order."""
         copies = cast(list[dict[str, Any]], copy.deepcopy(messages))
         for call in (c for m in copies for c in m.get("tool_calls") or []):
             if isinstance(call["function"]["arguments"], str):
                 call["function"]["arguments"] = json.loads(call["function"]["arguments"])
+        self.order_tool_results(copies)
         return copies
 
     def apply(
@@ -99,7 +127,7 @@ class ChatTemplate:
         return cast(str, text)
 
     def stub(self, messages: list[PromptMessage], tool_calls: Iterable[ToolCall] | None) -> list[Message]:
-        """A stub history to put before `messages` so the chat template will render them."""
+        """A stub history to put before `messages` so the template renders them; tool results get the assistant whose calls they answer."""
         stub: list[Message] = [
             SystemMessage(role="system", content="tokin-stub-system"),
             UserMessage(role="user", content="tokin-stub-user"),

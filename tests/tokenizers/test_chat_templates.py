@@ -44,6 +44,7 @@ SCENARIOS = {
     "tool": ([SYSTEM, USER, CALL], [RESULT], TOOLS, CALLS[:1]),
     "tool,user": ([SYSTEM, USER, CALL], [RESULT, user("And London?")], TOOLS, CALLS[:1]),
     "tool,tool": ([SYSTEM, USER, CALL2], [RESULT, RESULT2], TOOLS, CALLS),
+    "tool,tool reversed": ([SYSTEM, USER, CALL2], [RESULT2, RESULT], TOOLS, CALLS),
     "system,user": (
         [SYSTEM, USER, REPLY],
         [{"role": "system", "content": "Answer in French."}, user("Merci?")],

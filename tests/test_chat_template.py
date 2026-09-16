@@ -68,6 +68,33 @@ def test_conform_parses_string_arguments_without_touching_the_input():
     assert conformed[0] == USER
 
 
+class TestOrderToolResults:
+    def calls(self, *ids):
+        return {"role": "assistant", "content": "", "tool_calls": [{**CALLS[0], "id": i} for i in ids]}
+
+    def result(self, id):
+        return {**TOOL, "tool_call_id": id}
+
+    def test_puts_results_in_their_calls_order(self):
+        messages = [USER, self.calls("c1", "c2"), self.result("c2"), self.result("c1")]
+        ChatML(FakeTokenizer()).order_tool_results(messages)
+        assert [m["tool_call_id"] for m in messages[2:]] == ["c1", "c2"]
+
+    def test_refuses_a_result_out_of_its_run(self):
+        messages = [USER, self.calls("c1"), self.result("c1"), USER, self.result("c1")]
+        with pytest.raises(ValueError, match="does not follow"):
+            ChatML(FakeTokenizer()).order_tool_results(messages)
+
+    def test_refuses_a_missing_result(self):
+        with pytest.raises(ValueError, match="one each"):
+            ChatML(FakeTokenizer()).order_tool_results([USER, self.calls("c1", "c2"), self.result("c2")])
+
+    def test_refuses_a_duplicate_result(self):
+        messages = [USER, self.calls("c1"), self.result("c1"), self.result("c1")]
+        with pytest.raises(ValueError, match="one each"):
+            ChatML(FakeTokenizer()).order_tool_results(messages)
+
+
 def test_apply_is_the_tokenizers_own_render():
     tokenizer = FakeTokenizer()
     assert ChatML(tokenizer).apply([SYSTEM, USER]) == tokenizer.apply_chat_template(
