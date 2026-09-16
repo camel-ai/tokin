@@ -1,4 +1,4 @@
-from ..template import ChatTemplate
+from ..chat_template import ChatTemplate
 from ..tool_parsers import GLMToolParser
 
 

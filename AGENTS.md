@@ -111,7 +111,7 @@ Single backticks around identifiers and endpoints: `input_ids`, not
 ## Families
 
 A family is one chat template lineage: a `ChatTemplate` subclass under
-`src/tokin/templates/` stating its facts as class attributes, with `models` the
+`src/tokin/chat_templates/` stating its facts as class attributes, with `models` the
 checkpoints it was verified against.
 
 A family is named for the generation that introduced its template; later

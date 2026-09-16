@@ -3,8 +3,8 @@ from __future__ import annotations
 import jinja2
 import pytest
 
-from tokin.template import ChatTemplate, TemplateError
-from tokin.templates import get_template
+from tokin.chat_template import ChatTemplate, ChatTemplateError
+from tokin.chat_templates import get_chat_template
 from tokin.tool_parsers import HermesToolParser
 
 # One private-use character per control token, so each is a single id.
@@ -86,7 +86,7 @@ def test_unknown_kwarg_is_rejected():
 
 def test_stop_tokens_must_be_single_ids():
     with pytest.raises(ValueError, match="not one"):
-        get_template("qwen")(FakeTokenizer())
+        get_chat_template("qwen")(FakeTokenizer())
 
 
 class TestApplyIncrement:
@@ -95,18 +95,18 @@ class TestApplyIncrement:
         assert got == f"\n{START}tool\n18C<id>c1</id>{END}\n{START}user\nhi{END}\n{START}assistant\n"
 
     def test_tool_results_need_their_calls(self):
-        with pytest.raises(TemplateError, match="tool_calls"):
+        with pytest.raises(ChatTemplateError, match="tool_calls"):
             ChatML(FakeTokenizer()).apply_increment([TOOL], TOOLS)
 
     def test_tool_results_come_first(self):
-        with pytest.raises(TemplateError, match="before"):
+        with pytest.raises(ChatTemplateError, match="before"):
             ChatML(FakeTokenizer()).apply_increment([USER, TOOL], TOOLS, tool_calls=CALLS)
 
     def test_opening_token_must_be_a_stop(self):
         class NoTurnEnd(ChatML):
             turn_end = ""
 
-        with pytest.raises(TemplateError, match="never stops on"):
+        with pytest.raises(ChatTemplateError, match="never stops on"):
             NoTurnEnd(FakeTokenizer()).apply_increment([USER])
 
 
@@ -116,14 +116,14 @@ class TestApplyAfterStub:
             "{%- for m in messages %}",
             "{%- for m in messages %}{% if m.role == 'system' and not loop.first %}{{ raise_exception('system first') }}{% endif %}",
         )
-        with pytest.raises(TemplateError, match="system first"):
+        with pytest.raises(ChatTemplateError, match="system first"):
             ChatML(FakeTokenizer(strict)).apply_increment([SYSTEM])
 
     def test_rewriting_earlier_turns_is_refused(self):
         hoisting = "{%- for m in messages if m.role == 'system' %}[{{ m.content }}]{% endfor %}" + CHATML.replace(
             "{%- for m in messages %}", "{%- for m in messages if m.role != 'system' %}"
         )
-        with pytest.raises(TemplateError, match="rewrites"):
+        with pytest.raises(ChatTemplateError, match="rewrites"):
             ChatML(FakeTokenizer(hoisting)).apply_increment([SYSTEM])
 
 
@@ -181,11 +181,11 @@ class TestParse:
 class TestGetTemplate:
     def test_unknown_name(self):
         with pytest.raises(ValueError, match="unknown chat template"):
-            get_template("gpt2")
+            get_chat_template("gpt2")
 
     def test_module_path(self):
-        assert get_template("tokin.templates.qwen:QwenChatTemplate") is get_template("qwen")
+        assert get_chat_template("tokin.chat_templates.qwen:QwenChatTemplate") is get_chat_template("qwen")
 
     def test_non_template_path(self):
         with pytest.raises(TypeError, match="not a ChatTemplate"):
-            get_template("tokin.template:TemplateError")
+            get_chat_template("tokin.chat_template:ChatTemplateError")
