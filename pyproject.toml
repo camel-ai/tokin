@@ -24,7 +24,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "aiohttp>=3.10",
+    "httpx2>=2.7",
     "jinja2>=3.1",
     "openai>=2",
     "transformers>=5.6",
