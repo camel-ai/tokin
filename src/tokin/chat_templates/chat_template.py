@@ -8,8 +8,7 @@ from typing import Any, ClassVar, cast
 
 from transformers import PreTrainedTokenizerBase
 
-from ..tool_parsers import ToolParser
-from ..types import (
+from ..messages import (
     AssistantMessage,
     Message,
     PromptMessage,
@@ -18,6 +17,7 @@ from ..types import (
     ToolSchema,
     UserMessage,
 )
+from ..tool_parsers import ToolParser
 
 
 class ChatTemplateError(RuntimeError):

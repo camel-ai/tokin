@@ -1,6 +1,6 @@
 import json
 
-from ..types import FunctionToolCall, ToolSchema
+from ..messages import FunctionToolCall, ToolSchema
 from .tool_parser import TOOL_CALL, ToolParser
 
 

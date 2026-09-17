@@ -4,7 +4,8 @@ import json
 import httpx2
 import pytest
 
-from tokin.backends import Generation, GenerationError, SGLangBackend
+from tokin.backends import GenerationError, SGLangBackend
+from tokin.rollout import Generation
 
 REPLY = {
     "text": "ok",

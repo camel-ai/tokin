@@ -1,74 +1,91 @@
 import pytest
 
-from tokin.rollout import Rollout, Turn
+from tokin.rollout import Generation, Prompt, Rollout
 
 
-def test_turn_rejects_misaligned_logprobs():
+def gen(*ids, **kwargs):
+    return Generation(list(ids), "stop", **kwargs)
+
+
+def test_generation_rejects_misaligned_logprobs():
     with pytest.raises(ValueError, match="2 entries but token_ids has 3"):
-        Turn(token_ids=[1, 2, 3], generated=True, logprobs=[0.0, 0.0])
+        gen(1, 2, 3, logprobs=[0.0, 0.0])
 
 
-def test_generated_turn_may_omit_logprobs():
-    assert Turn(token_ids=[1, 2], generated=True).logprobs is None
-
-
-def test_token_ids_concatenate_in_turn_order():
+def test_token_ids_concatenate_in_segment_order():
     r = Rollout()
-    r.add_prompt([1])
+    r.append(Prompt([1]))
     for i in range(3):
-        r.add_response([100 + i], logprobs=[0.0])
-        r.add_prompt([200 + i])
+        r.append(gen(100 + i))
+        r.append(Prompt([200 + i]))
     assert r.token_ids == [1, 100, 200, 101, 201, 102, 202]
 
 
-def test_generated_flag_follows_the_call_used():
+def test_segments_keep_their_kind():
     r = Rollout()
-    r.add_prompt([1])
-    r.add_response([2], logprobs=[0.0])
-    assert [t.generated for t in r.turns] == [False, True]
+    r.append(Prompt([1]))
+    r.append(gen(2))
+    assert [type(s) for s in r.segments] == [Prompt, Generation]
 
 
-def test_empty_turns_are_dropped():
+def test_empty_segments_are_dropped():
     r = Rollout()
-    r.add_prompt([1])
-    r.add_prompt([])
-    r.add_response([], logprobs=[])
-    assert len(r.turns) == 1
-
-
-def test_inputs_are_copied_not_aliased():
-    ids, logprobs = [1, 2], [-0.1, -0.2]
-    r = Rollout()
-    r.add_prompt(ids)
-    r.add_response(ids, logprobs=logprobs)
-    ids.append(99)
-    logprobs.append(99.0)
-    assert r.token_ids == [1, 2, 1, 2]
-    assert r.turns[1].logprobs == [-0.1, -0.2]
+    r.append(Prompt([1]))
+    r.append(Prompt([]))
+    r.append(gen())
+    assert len(r.segments) == 1
 
 
 def test_token_ids_returns_a_fresh_list():
     # Callers concatenate onto it to build the next prompt.
     r = Rollout()
-    r.add_prompt([1])
+    r.append(Prompt([1]))
     r.token_ids.append(2)
     assert r.token_ids == [1]
 
 
 def test_repr_summarises_without_dumping_tokens():
     r = Rollout()
-    r.add_prompt([1, 2, 3])
-    r.add_response([4, 5], logprobs=[0.0, 0.0])
-    assert repr(r) == "Rollout(turns=2, tokens=5, generated=2)"
+    r.append(Prompt([1, 2, 3]))
+    r.append(gen(4, 5))
+    assert repr(r) == "Rollout(segments=2, tokens=5, generated=2)"
 
 
-def test_add_response_cannot_open_a_rollout():
+def test_a_generation_cannot_open_a_rollout():
     # A loss mask starting at 1 would train on tokens nothing conditioned on.
-    with pytest.raises(RuntimeError, match="cannot open with a generated turn"):
-        Rollout().add_response([1], logprobs=[0.0])
+    with pytest.raises(RuntimeError, match="cannot open with a generation"):
+        Rollout().append(gen(1))
 
 
-def test_empty_response_before_any_prompt_is_not_an_error():
-    r = Rollout()
-    r.add_response([])
-    assert r.turns == []
+def rows(*values):
+    return b"".join(v.to_bytes(4, "little") for v in values)
+
+
+class TestRoutedExperts:
+    def test_joins_the_per_call_slices_in_order(self):
+        r = Rollout()
+        r.append(Prompt([1, 2, 3]))
+        r.append(gen(4, 5, routed_experts=rows(10, 11, 12, 13)))  # positions 0..3 of 5 tokens
+        r.append(Prompt([6]))
+        r.append(gen(7, routed_experts=rows(14, 15)))  # positions 4..5 of 7 tokens
+        assert r.routed_experts(layers=1, top_k=1) == rows(10, 11, 12, 13, 14, 15)
+
+    def test_drops_the_engines_extra_row_for_the_final_token(self):
+        r = Rollout()
+        r.append(Prompt([1, 2]))
+        r.append(gen(3, routed_experts=rows(10, 11, 99)))
+        assert r.routed_experts(layers=1, top_k=1) == rows(10, 11)
+
+    def test_refuses_a_slice_of_the_wrong_size(self):
+        r = Rollout()
+        r.append(Prompt([1, 2]))
+        r.append(gen(3, routed_experts=rows(10)))
+        with pytest.raises(ValueError, match="1 routing rows for 2 positions"):
+            r.routed_experts(layers=1, top_k=1)
+
+    def test_refuses_a_generation_without_routing(self):
+        r = Rollout()
+        r.append(Prompt([1, 2]))
+        r.append(gen(3))
+        with pytest.raises(ValueError, match="without its expert routing"):
+            r.routed_experts(layers=1, top_k=1)

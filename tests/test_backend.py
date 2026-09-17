@@ -3,7 +3,8 @@ from typing import ClassVar
 
 import pytest
 
-from tokin.backends import Generation, GenerationBackend
+from tokin.backends import GenerationBackend
+from tokin.rollout import Generation
 
 
 class Stub(GenerationBackend):
