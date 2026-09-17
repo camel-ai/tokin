@@ -32,6 +32,8 @@ The user optionally provides a version as $ARGUMENTS (e.g. `0.4.0`). If not prov
 - Write descriptions from the **user's perspective**, not the commit message verbatim.
 - Omit empty sections. Group related commits into a single bullet.
 - Keep it concise: release notes are for users, not a git log dump.
+- Minor and major releases open with a **Highlights** paragraph, two or three sentences on what the release means, before the sections. Patch releases don't.
+- Notes cover the changes since the previous tag, whatever its size; a minor does not repeat its patches. The one exception: when the previous tag was a name-claim (`0.0.x`), nobody read its notes, so write this release's notes cumulatively from the first commit.
 
 ## 3. Show the user the release notes for review
 
@@ -40,6 +42,8 @@ Present the full release notes in the body format below and ask the user to conf
 **Body format**:
 ```markdown
 ## What's New
+
+Highlights paragraph, minor and major releases only.
 
 ### Features
 - Brief description of the feature ([#N](https://github.com/camel-ai/tokin/pull/N))
