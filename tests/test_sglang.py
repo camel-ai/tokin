@@ -1,3 +1,4 @@
+import base64
 import json
 
 import httpx2
@@ -74,6 +75,15 @@ class TestGenerate:
         reply = {**REPLY, "meta_info": {**REPLY["meta_info"], "finish_reason": {"type": "retracted"}}}
         with pytest.raises(GenerationError, match="retracted"):
             await call(FakeSGLang(reply), max_tokens=3)
+
+    async def test_routed_experts_come_back_as_the_raw_buffer(self):
+        buffer = bytes(range(24))
+        reply = {**REPLY, "meta_info": {**REPLY["meta_info"], "routed_experts": base64.b64encode(buffer).decode()}}
+        fake = FakeSGLang(reply)
+        got = await call(fake, max_tokens=8, routed_experts_start=9)
+        [body] = fake.requests
+        assert body["return_routed_experts"] is True and body["routed_experts_start_len"] == 9
+        assert "routed_experts_start_len" not in body["sampling_params"] and got.routed_experts == buffer
 
     async def test_unknown_keys_are_sampling_params(self):
         fake = FakeSGLang()
