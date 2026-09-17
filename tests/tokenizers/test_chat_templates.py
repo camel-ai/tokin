@@ -5,8 +5,7 @@ import pytest
 from jinja2 import meta
 from transformers import AutoConfig, AutoTokenizer, GenerationConfig
 
-from tokin.chat_template import ChatTemplateError
-from tokin.chat_templates import CHAT_TEMPLATES, get_chat_template
+from tokin.chat_templates import CHAT_TEMPLATES, ChatTemplateError, get_chat_template
 from tokin.chat_templates.glm import GLMChatTemplate
 from tokin.chat_templates.qwen import Qwen35ChatTemplate, QwenChatTemplate
 

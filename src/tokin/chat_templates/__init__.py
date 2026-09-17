@@ -1,6 +1,6 @@
 import importlib
 
-from ..chat_template import ChatTemplate
+from .chat_template import ChatTemplate, ChatTemplateError
 from .glm import GLMChatTemplate
 from .qwen import Qwen35ChatTemplate, QwenChatTemplate
 
@@ -25,4 +25,4 @@ def get_chat_template(name: str) -> type[ChatTemplate]:
     raise ValueError(f"unknown chat template {name!r}; known: {list(CHAT_TEMPLATES)}")
 
 
-__all__ = ["CHAT_TEMPLATES", "get_chat_template"]
+__all__ = ["CHAT_TEMPLATES", "ChatTemplate", "ChatTemplateError", "get_chat_template"]

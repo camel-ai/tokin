@@ -1,5 +1,5 @@
-from ..chat_template import ChatTemplate
 from ..tool_parsers import GLMToolParser
+from .chat_template import ChatTemplate
 
 
 class GLMChatTemplate(ChatTemplate):

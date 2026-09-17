@@ -1,4 +1,4 @@
-from tokin.tool_parser import TOOL_CALL, ToolParser
+from tokin.tool_parsers import TOOL_CALL, ToolParser
 
 PROPERTIES = {"s": {"type": "string"}, "n": {"type": "integer"}}
 TOOLS = [{"type": "function", "function": {"name": "f", "parameters": {"type": "object", "properties": PROPERTIES}}}]

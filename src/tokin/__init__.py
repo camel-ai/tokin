@@ -1,9 +1,9 @@
 from importlib.metadata import version
 
-from .chat_template import ChatTemplate, ChatTemplateError
-from .chat_templates import CHAT_TEMPLATES, get_chat_template
+from .chat_templates import CHAT_TEMPLATES, ChatTemplate, ChatTemplateError, get_chat_template
 from .rollout import Rollout, Turn
 from .session import Session
+from .tool_parsers import ToolParser
 
 __version__ = version("tokin")
 __all__ = [
@@ -11,6 +11,7 @@ __all__ = [
     "ChatTemplate",
     "Rollout",
     "Session",
+    "ToolParser",
     "ChatTemplateError",
     "Turn",
     "__version__",

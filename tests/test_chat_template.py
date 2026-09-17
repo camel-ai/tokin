@@ -3,8 +3,7 @@ from __future__ import annotations
 import jinja2
 import pytest
 
-from tokin.chat_template import ChatTemplate, ChatTemplateError
-from tokin.chat_templates import get_chat_template
+from tokin.chat_templates import ChatTemplate, ChatTemplateError, get_chat_template
 from tokin.tool_parsers import HermesToolParser
 
 # One private-use character per control token, so each is a single id.
@@ -215,4 +214,4 @@ class TestGetTemplate:
 
     def test_non_template_path(self):
         with pytest.raises(TypeError, match="not a ChatTemplate"):
-            get_chat_template("tokin.chat_template:ChatTemplateError")
+            get_chat_template("tokin.chat_templates:ChatTemplateError")

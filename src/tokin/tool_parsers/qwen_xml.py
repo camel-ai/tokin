@@ -1,7 +1,7 @@
 import re
 
-from ..tool_parser import TOOL_CALL, ToolParser
 from ..types import FunctionToolCall, ToolSchema
+from .tool_parser import TOOL_CALL, ToolParser
 
 
 class QwenXMLToolParser(ToolParser):

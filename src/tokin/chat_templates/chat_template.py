@@ -8,8 +8,8 @@ from typing import Any, ClassVar, cast
 
 from transformers import PreTrainedTokenizerBase
 
-from .tool_parser import ToolParser
-from .types import (
+from ..tool_parsers import ToolParser
+from ..types import (
     AssistantMessage,
     Message,
     PromptMessage,
