@@ -5,7 +5,7 @@ import re
 import uuid
 from typing import Any, ClassVar
 
-from ..types import FunctionToolCall, ToolSchema
+from ..messages import FunctionToolCall, ToolSchema
 
 TOOL_CALL = re.compile(r"<tool_call>\n?(.*?)\n?</tool_call>", re.DOTALL)
 

@@ -1,18 +1,35 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
 
 
-@dataclass
-class Turn:
-    """A contiguous run of token ids, either from the prompt or sampled by the model."""
+@dataclass(frozen=True, slots=True)
+class Prompt:
+    """Ids the harness's messages rendered to, as the engine received them."""
 
     token_ids: list[int]
-    generated: bool
+
+    def __len__(self) -> int:
+        return len(self.token_ids)
+
+
+@dataclass(frozen=True, slots=True)
+class Generation:
+    """What the model sampled for one prompt, as ids, including the stop id it ended on.
+
+    `routed_experts` is the engine's buffer as it came: int32, C order, shape `(positions, layers, top_k)`
+    flattened, positions running from `routed_experts_start` up to the last sampled token, which predicts
+    nothing. The trainer reshapes it with its model's layer count and top-k; MoE training replays the routing.
+    """
+
+    token_ids: list[int]
+    finish_reason: Literal["stop", "length", "abort"]
     logprobs: list[float] | None = None
+    routed_experts: bytes | None = None
 
     def __post_init__(self) -> None:
-        # Whether logprobs are required is the trainer's call; alignment is not.
+        # Whether logprobs are wanted is the trainer's call; alignment is not.
         if self.logprobs is not None and len(self.logprobs) != len(self.token_ids):
             raise ValueError(f"logprobs has {len(self.logprobs)} entries but token_ids has {len(self.token_ids)}")
 
@@ -22,38 +39,47 @@ class Turn:
 
 @dataclass
 class Rollout:
-    """The turns of one conversation, in order."""
+    """The prompts and generations of one conversation, in order."""
 
-    turns: list[Turn] = field(default_factory=list)
-
-    def add_prompt(self, token_ids: list[int]) -> None:
-        """Add prompt (input) tokens."""
-        # A zero-length turn adds no tokens but still reads as a segment boundary.
-        if token_ids:
-            self.turns.append(Turn(token_ids=list(token_ids), generated=False))
-
-    def add_response(self, token_ids: list[int], logprobs: list[float] | None = None) -> None:
-        """Add model-generated (output) tokens."""
-        if not token_ids:
-            return
-        if not self.turns:
-            raise RuntimeError("a rollout cannot open with a generated turn; add_prompt first")
-        self.turns.append(
-            Turn(
-                token_ids=list(token_ids),
-                generated=True,
-                logprobs=None if logprobs is None else list(logprobs),
-            )
-        )
+    segments: list[Prompt | Generation] = field(default_factory=list)
 
     @property
     def token_ids(self) -> list[int]:
-        """Every turn's ids concatenated — the prefix the next prompt extends."""
-        return [i for turn in self.turns for i in turn.token_ids]
+        """Every segment's ids concatenated — the prefix the next prompt extends."""
+        return [i for s in self.segments for i in s.token_ids]
+
+    def append(self, segment: Prompt | Generation) -> None:
+        """Add a segment; a rollout opens with a prompt, and an empty segment adds nothing."""
+        if not segment.token_ids:
+            return
+        if not self.segments and isinstance(segment, Generation):
+            raise RuntimeError("a rollout cannot open with a generation")
+        self.segments.append(segment)
+
+    def routed_experts(self, layers: int, top_k: int) -> bytes:
+        """Every position's expert routing so far, `(positions, layers, top_k)` int32 flattened, joined from the per-call slices.
+
+        Each generation's slice must run from where the previous one ended to its own second-to-last
+        token; the engine sometimes appends one extra row for the final token, which is dropped.
+        """
+        row = 4 * layers * top_k
+        covered, chunks = 0, []
+        for i, segment in enumerate(self.segments):
+            if not isinstance(segment, Generation):
+                continue
+            if segment.routed_experts is None:
+                raise ValueError(f"segment {i} was generated without its expert routing")
+            end = sum(len(s) for s in self.segments[: i + 1]) - 1
+            rows, rest = divmod(len(segment.routed_experts), row)
+            if rest or rows not in (end - covered, end - covered + 1):
+                raise ValueError(f"segment {i} carries {rows} routing rows for {end - covered} positions")
+            chunks.append(segment.routed_experts[: (end - covered) * row])
+            covered = end
+        return b"".join(chunks)
 
     def __len__(self) -> int:
-        return sum(len(turn) for turn in self.turns)
+        return sum(len(s) for s in self.segments)
 
     def __repr__(self) -> str:
-        generated = sum(len(t) for t in self.turns if t.generated)
-        return f"Rollout(turns={len(self.turns)}, tokens={len(self)}, generated={generated})"
+        generated = sum(len(s) for s in self.segments if isinstance(s, Generation))
+        return f"Rollout(segments={len(self.segments)}, tokens={len(self)}, generated={generated})"

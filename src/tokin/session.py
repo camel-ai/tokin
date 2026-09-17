@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from uuid import uuid4
 
 from .rollout import Rollout
 
@@ -16,6 +17,7 @@ class Session:
     run once rather than once per fork.
     """
 
+    id: str = field(default_factory=lambda: uuid4().hex)
     rollouts: list[Rollout] = field(default_factory=lambda: [Rollout()])
 
     @property
@@ -32,4 +34,4 @@ class Session:
         return sum(len(rollout) for rollout in self.rollouts)
 
     def __repr__(self) -> str:
-        return f"Session(rollouts={len(self.rollouts)}, tokens={len(self)})"
+        return f"Session(id={self.id!r}, rollouts={len(self.rollouts)}, tokens={len(self)})"
