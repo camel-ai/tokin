@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 from collections.abc import Callable
 from typing import Any, ClassVar
@@ -19,17 +20,27 @@ class SGLangBackend(GenerationBackend):
         "seed": "sampling_seed",
         "response_schema": "json_schema",
         "return_logprobs": "return_logprob",
+        "routed_experts_start": "routed_experts_start_len",
         "request_id": "rid",
     }
     param_convert: ClassVar[dict[str, Callable[[Any], Any]]] = {"stop_ids": sorted, "response_schema": json.dumps}
     # These sit at the top level of the `/generate` body; every other key goes into `sampling_params`.
-    top_level_keys: ClassVar[frozenset[str]] = frozenset({"return_logprob", "rid"})
+    top_level_keys: ClassVar[frozenset[str]] = frozenset(
+        {"return_logprob", "return_routed_experts", "routed_experts_start_len", "rid"}
+    )
 
     def __init__(self, url: str, client: httpx2.AsyncClient, *, retries: int = 60, retry_delay: float = 1.0) -> None:
         self.url = url.rstrip("/")
         self.client = client
         self.retries = retries
         self.retry_delay = retry_delay
+
+    def translate(self, params: GenerationParams) -> dict[str, Any]:
+        out = super().translate(params)
+        # sglang wants the switch and the start as two fields; one key of ours is both.
+        if "routed_experts_start_len" in out:
+            out["return_routed_experts"] = True
+        return out
 
     async def post(self, payload: dict[str, Any]) -> Any:
         """The JSON `/generate` answers, after however many retries it takes."""
@@ -52,5 +63,9 @@ class SGLangBackend(GenerationBackend):
         meta = out["meta_info"]
         if meta["finish_reason"]["type"] not in ("stop", "length", "abort"):
             raise GenerationError(f"sglang finished with {meta['finish_reason']}")
-        logprobs = [lp for lp, _, _ in meta["output_token_logprobs"]] if params.get("return_logprobs") else None
-        return Generation(token_ids=out["output_ids"], finish_reason=meta["finish_reason"]["type"], logprobs=logprobs)
+        return Generation(
+            token_ids=out["output_ids"],
+            finish_reason=meta["finish_reason"]["type"],
+            logprobs=[lp for lp, _, _ in meta["output_token_logprobs"]] if params.get("return_logprobs") else None,
+            routed_experts=base64.b64decode(meta["routed_experts"]) if "routed_experts" in meta else None,
+        )

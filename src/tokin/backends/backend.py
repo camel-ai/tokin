@@ -35,17 +35,24 @@ class GenerationParams(TypedDict, total=False):
     # Constrained decoding / Structured output.
     response_schema: dict[str, Any]
 
-    # Reporting: what comes back besides the ids; none of it changes them.
+    # Additional data to return besides the ids
     return_logprobs: bool
+    routed_experts_start: int
 
 
 @dataclass(frozen=True, slots=True)
 class Generation:
-    """What the model sampled for one prompt, as ids, including the stop id it ended on."""
+    """What the model sampled for one prompt, as ids, including the stop id it ended on.
+
+    `routed_experts` is the engine's buffer as it came: int32, C order, shape `(positions, layers, top_k)`
+    flattened, positions running from `routed_experts_start` up to the last sampled token, which predicts
+    nothing. The trainer reshapes it with its model's layer count and top-k; MoE training replays the routing.
+    """
 
     token_ids: list[int]
     finish_reason: Literal["stop", "length", "abort"]
     logprobs: list[float] | None = None
+    routed_experts: bytes | None = None
 
 
 class GenerationBackend(ABC):
