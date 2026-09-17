@@ -30,9 +30,6 @@ dependencies = [
     "transformers>=5.6",
 ]
 
-[project.scripts]
-tokin = "tokin.__main__:main"
-
 [project.urls]
 Homepage = "https://github.com/camel-ai/tokin"
 Repository = "https://github.com/camel-ai/tokin"
