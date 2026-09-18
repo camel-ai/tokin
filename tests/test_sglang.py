@@ -39,6 +39,14 @@ async def call(fake, retries=3, **params):
         return await backend.generate([1, 2], {"stop_ids": frozenset({7, 3}), **params})
 
 
+async def test_context_length_reads_server_info():
+    for reply in ({"context_length": 32768}, {"context_length": None}):
+        async with httpx2.AsyncClient(
+            transport=httpx2.MockTransport(lambda r, reply=reply: httpx2.Response(200, json=reply))
+        ) as client:
+            assert await SGLangBackend("http://sglang/", client).context_length() == reply["context_length"]
+
+
 class TestGenerate:
     async def test_speaks_ids_and_keeps_the_stop_token(self):
         fake = FakeSGLang()

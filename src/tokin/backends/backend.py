@@ -60,6 +60,11 @@ class GenerationBackend(ABC):
         return out
 
     @abstractmethod
+    async def context_length(self) -> int | None:
+        """The most tokens a prompt and its generation may total, or `None` when the engine left it to the model's config."""
+        raise NotImplementedError
+
+    @abstractmethod
     async def generate(
         self,
         token_ids: list[int],
