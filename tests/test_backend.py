@@ -15,6 +15,9 @@ class Stub(GenerationBackend):
     }
     param_convert: ClassVar = {"stop_ids": sorted, "response_schema": json.dumps}
 
+    async def context_length(self):
+        return None
+
     async def generate(self, token_ids, params):
         return Generation(token_ids=[], finish_reason="stop")
 

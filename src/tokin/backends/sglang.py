@@ -43,6 +43,12 @@ class SGLangBackend(GenerationBackend):
             out["return_routed_experts"] = True
         return out
 
+    async def context_length(self) -> int | None:
+        response = await self.client.get(f"{self.url}/server_info")
+        response.raise_for_status()
+        length = response.json().get("context_length")
+        return None if length is None else int(length)
+
     async def post(self, payload: dict[str, Any]) -> Any:
         """The JSON `/generate` answers, after however many retries it takes."""
         for attempt in range(1, self.retries + 1):
