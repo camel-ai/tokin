@@ -26,6 +26,7 @@ classifiers = [
 dependencies = [
     "httpx2>=2.7",
     "jinja2>=3.1",
+    "numpy>=2",
     "openai>=2",
     "transformers>=5.6",
 ]
@@ -39,8 +40,6 @@ Issues = "https://github.com/camel-ai/tokin/issues"
 # not a feature users can install, and it stays out of the published metadata.
 [dependency-groups]
 dev = [
-    # No upper bound: uv.lock pins the exact version for reproducibility, so a
-    # ceiling here would only hide new checks behind a major release.
     "mypy>=2.3",
     "pre-commit>=4",
     "pytest>=8",
