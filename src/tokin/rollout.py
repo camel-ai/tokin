@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from enum import StrEnum
 
 import numpy as np
 from numpy.typing import NDArray
+
+
+class FinishReason(StrEnum):
+    """Why a generation ended. OpenAI's enum has no `abort`; tokin reports it as it is."""
+
+    STOP = "stop"  # on one of the template's stop ids
+    LENGTH = "length"  # `max_tokens`
+    ABORT = "abort"  # the engine cut it short, as on a weight update in asynchronous training
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,7 +35,7 @@ class Generation:
     """
 
     token_ids: list[int]
-    finish_reason: Literal["stop", "length", "abort"]
+    finish_reason: FinishReason
     logprobs: list[float] | None = None
     routed_experts: bytes | None = None
 

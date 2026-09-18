@@ -8,7 +8,8 @@ from typing import Any, ClassVar
 
 import httpx2
 
-from .backend import Generation, GenerationBackend, GenerationError, GenerationParams
+from ..rollout import FinishReason, Generation
+from .backend import GenerationBackend, GenerationError, GenerationParams
 
 
 class SGLangBackend(GenerationBackend):
@@ -61,11 +62,13 @@ class SGLangBackend(GenerationBackend):
             target[name] = value
         out = await self.post(payload)
         meta = out["meta_info"]
-        if meta["finish_reason"]["type"] not in ("stop", "length", "abort"):
-            raise GenerationError(f"sglang finished with {meta['finish_reason']}")
+        try:
+            finish_reason = FinishReason(meta["finish_reason"]["type"])
+        except ValueError as e:
+            raise GenerationError(f"sglang finished with {meta['finish_reason']}") from e
         return Generation(
             token_ids=out["output_ids"],
-            finish_reason=meta["finish_reason"]["type"],
+            finish_reason=finish_reason,
             logprobs=[lp for lp, _, _ in meta["output_token_logprobs"]] if params.get("return_logprobs") else None,
             routed_experts=base64.b64decode(meta["routed_experts"]) if "routed_experts" in meta else None,
         )
