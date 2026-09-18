@@ -3,6 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
+import numpy as np
+from numpy.typing import NDArray
+
 
 @dataclass(frozen=True, slots=True)
 class Prompt:
@@ -56,26 +59,29 @@ class Rollout:
             raise RuntimeError("a rollout cannot open with a generation")
         self.segments.append(segment)
 
-    def routed_experts(self, layers: int, top_k: int) -> bytes:
-        """Every position's expert routing so far, `(positions, layers, top_k)` int32 flattened, joined from the per-call slices.
+    def routed_experts(self, layers: int, top_k: int) -> NDArray[np.int32]:
+        """Every position's expert routing so far, shape `(len(self) - 1, layers, top_k)`, joined from the per-call slices.
 
         Each generation's slice must run from where the previous one ended to its own second-to-last
         token; the engine sometimes appends one extra row for the final token, which is dropped.
         """
-        row = 4 * layers * top_k
-        covered, chunks = 0, []
+        covered, tokens, chunks = 0, 0, []
         for i, segment in enumerate(self.segments):
+            tokens += len(segment)
             if not isinstance(segment, Generation):
                 continue
             if segment.routed_experts is None:
                 raise ValueError(f"segment {i} was generated without its expert routing")
-            end = sum(len(s) for s in self.segments[: i + 1]) - 1
-            rows, rest = divmod(len(segment.routed_experts), row)
-            if rest or rows not in (end - covered, end - covered + 1):
-                raise ValueError(f"segment {i} carries {rows} routing rows for {end - covered} positions")
-            chunks.append(segment.routed_experts[: (end - covered) * row])
-            covered = end
-        return b"".join(chunks)
+            # A token's routing is produced when it is fed in, so every token so far has a row but the newest.
+            positions = tokens - 1
+            x = np.frombuffer(segment.routed_experts, dtype=np.int32)
+            rows, rest = divmod(x.size, layers * top_k)
+            # +1 is sglang having fed the final token once more, as after an abort; the next turn owns it.
+            if rest or rows not in (positions - covered, positions - covered + 1):
+                raise ValueError(f"segment {i} carries {rows} routing rows for {positions - covered} positions")
+            chunks.append(x.reshape(rows, layers, top_k)[: positions - covered])
+            covered = positions
+        return np.concatenate(chunks) if chunks else np.empty((0, layers, top_k), dtype=np.int32)
 
     def __len__(self) -> int:
         return sum(len(s) for s in self.segments)

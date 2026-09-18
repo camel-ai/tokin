@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from tokin.rollout import Generation, Prompt, Rollout
@@ -58,7 +59,7 @@ def test_a_generation_cannot_open_a_rollout():
 
 
 def rows(*values):
-    return b"".join(v.to_bytes(4, "little") for v in values)
+    return np.array(values, dtype=np.int32).tobytes()
 
 
 class TestRoutedExperts:
@@ -68,13 +69,13 @@ class TestRoutedExperts:
         r.append(gen(4, 5, routed_experts=rows(10, 11, 12, 13)))  # positions 0..3 of 5 tokens
         r.append(Prompt([6]))
         r.append(gen(7, routed_experts=rows(14, 15)))  # positions 4..5 of 7 tokens
-        assert r.routed_experts(layers=1, top_k=1) == rows(10, 11, 12, 13, 14, 15)
+        assert r.routed_experts(layers=1, top_k=1).tolist() == [[[10]], [[11]], [[12]], [[13]], [[14]], [[15]]]
 
     def test_drops_the_engines_extra_row_for_the_final_token(self):
         r = Rollout()
         r.append(Prompt([1, 2]))
         r.append(gen(3, routed_experts=rows(10, 11, 99)))
-        assert r.routed_experts(layers=1, top_k=1) == rows(10, 11)
+        assert r.routed_experts(layers=1, top_k=1).tolist() == [[[10]], [[11]]]
 
     def test_refuses_a_slice_of_the_wrong_size(self):
         r = Rollout()
