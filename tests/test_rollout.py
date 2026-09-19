@@ -49,7 +49,8 @@ def test_repr_summarises_without_dumping_tokens():
     r = Rollout()
     r.append(Prompt([1, 2, 3]))
     r.append(gen(4, 5))
-    assert repr(r) == "Rollout(segments=2, tokens=5, generated=2)"
+    r.messages.append({"role": "user", "content": "hi"})
+    assert repr(r) == "Rollout(tokens=5, generated=2, segments=2, messages=1)"
 
 
 def test_a_generation_cannot_open_a_rollout():

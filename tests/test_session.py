@@ -49,6 +49,10 @@ def test_sessions_do_not_share_their_default_rollout():
     assert len(b.current) == 0
 
 
+def test_sessions_do_not_share_a_lock():
+    assert Session().lock is not Session().lock
+
+
 def test_id_is_fresh_unless_given():
     assert Session().id != Session().id and len(Session().id) == 32
     assert Session(id="episode-7").id == "episode-7"
