@@ -6,6 +6,8 @@ from enum import StrEnum
 import numpy as np
 from numpy.typing import NDArray
 
+from .messages import Message
+
 
 class FinishReason(StrEnum):
     """Why a generation ended. OpenAI's enum has no `abort`; tokin reports it as it is."""
@@ -50,9 +52,19 @@ class Generation:
 
 @dataclass
 class Rollout:
-    """The prompts and generations of one conversation, in order."""
+    """One conversation, as token ids and as messages.
+
+    Attributes:
+        segments (list[Prompt | Generation]): The token ids in engine order: the prompts `tokin`
+            rendered and the generations the model sampled. Concatenated they are the full
+            sequence; which segment an id falls in is its loss mask.
+        messages (list[Message]): The same conversation as OpenAI messages: what the harness
+            sent, plus the assistant message parsed from each generation. Not one to one with
+            `segments`, since one prompt renders every message added since the last generation.
+    """
 
     segments: list[Prompt | Generation] = field(default_factory=list)
+    messages: list[Message] = field(default_factory=list)
 
     @property
     def token_ids(self) -> list[int]:
@@ -96,4 +108,7 @@ class Rollout:
 
     def __repr__(self) -> str:
         generated = sum(len(s) for s in self.segments if isinstance(s, Generation))
-        return f"Rollout(segments={len(self.segments)}, tokens={len(self)}, generated={generated})"
+        return (
+            f"Rollout(tokens={len(self)}, generated={generated}, "
+            f"segments={len(self.segments)}, messages={len(self.messages)})"
+        )

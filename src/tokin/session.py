@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from uuid import uuid4
 
@@ -19,6 +20,8 @@ class Session:
 
     id: str = field(default_factory=lambda: uuid4().hex)
     rollouts: list[Rollout] = field(default_factory=lambda: [Rollout()])
+    # One turn at a time; the gateway holds it from prompt to parse.
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock, compare=False)
 
     @property
     def current(self) -> Rollout:
