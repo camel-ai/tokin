@@ -17,6 +17,19 @@ uv run pre-commit run --all-files
 `pre-commit` runs mypy and the fast tests through the project venv, so `uv sync`
 has to have run first.
 
+## Less
+
+损之又损: subtract, then subtract again. Before adding a field, a module, a
+helper or a test, ask what can be left out or derived from what already exists;
+before shipping, ask what can still come out.
+
+- Build the path that runs today. A second implementation, API or option arrives
+  when something needs it, not when it can be foreseen.
+- One source per fact. Derive a list from the thing it lists rather than keep a
+  copy that can drift.
+- What stays must still be refused loudly when it doesn't apply. Less code is
+  never a silently dropped input.
+
 ## Style
 
 Formatting is `ruff`'s job. What a linter can't check:
