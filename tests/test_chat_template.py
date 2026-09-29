@@ -67,6 +67,17 @@ def test_conform_parses_string_arguments_without_touching_the_input():
     assert conformed[0] == USER
 
 
+def test_conform_joins_text_parts():
+    parts = [{"type": "text", "text": "a"}, {"type": "text", "text": "b"}]
+    assert ChatML(FakeTokenizer()).conform([{"role": "user", "content": parts}]) == [{"role": "user", "content": "ab"}]
+
+
+def test_conform_refuses_non_text_content():
+    image = {"type": "image_url", "image_url": {"url": "u"}}
+    with pytest.raises(ChatTemplateError, match="text"):
+        ChatML(FakeTokenizer()).conform([{"role": "user", "content": [image]}])
+
+
 class TestOrderToolResults:
     def calls(self, *ids):
         return {"role": "assistant", "content": "", "tool_calls": [{**CALLS[0], "id": i} for i in ids]}
