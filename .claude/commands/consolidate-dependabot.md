@@ -42,9 +42,10 @@ Transitive bumps in the Dependabot diff (e.g. `tokenizers` under `transformers`)
 **Prove equivalence.** Apply every included PR diff onto a scratch copy of `origin/main` and `diff` it against the working tree. It must be byte-identical; anything else means a version, a marker or a uv version is off. Fix the cause, never hand-edit the lock.
 
 ```bash
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)   # gh loses the repo once inside the scratch clone
 TMP=$(mktemp -d) && git show origin/main:uv.lock > "$TMP/uv.lock"
 (cd "$TMP" && git init -q && git add . && git -c user.name=x -c user.email=x@x commit -qm base \
-  && for n in <numbers>; do gh pr diff "$n" | git apply; done)
+  && for n in <numbers>; do gh -R "$REPO" pr diff "$n" | git apply; done)
 diff -q "$TMP/uv.lock" uv.lock && echo IDENTICAL
 ```
 
@@ -55,8 +56,8 @@ The Dependabot PRs were each tested alone; this is the first run of the combinat
 ```bash
 uv sync --locked
 uv run pre-commit run --all-files --show-diff-on-failure   # what CI's lint job runs; includes uv-lock, mypy, pytest (fast)
-uv run pytest tests/unit -q
-uv run ruff check src/ tests/ examples/ && uv run ruff format --check src/ tests/ examples/   # the venv's new ruff, not the hook's
+uv run pytest tests -q   # addopts already deselects tokenizer and integration
+uv run ruff check src/ tests/ && uv run ruff format --check src/ tests/   # the venv's new ruff, not the hook's
 ```
 
 Any failure ends the consolidation: report it with the output and leave the Dependabot PRs open.
