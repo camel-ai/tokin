@@ -101,8 +101,13 @@ class ChatTemplate:
                 i = j
 
     def conform(self, messages: list[Message]) -> list[dict[str, Any]]:
-        """Copy `messages` into the shape HF templates read: `arguments` as dicts, tool results in their calls' order."""
+        """Copy `messages` into the shape HF templates read: text parts joined, `arguments` as dicts, tool results in their calls' order."""
         copies = cast(list[dict[str, Any]], copy.deepcopy(messages))
+        # Only a string is content every template reads; Qwen3's renders a list of parts as nothing.
+        for m in (m for m in copies if isinstance(m.get("content"), list)):
+            if any(part["type"] != "text" for part in m["content"]):
+                raise ChatTemplateError("only text content is supported")
+            m["content"] = "".join(part["text"] for part in m["content"])
         for call in (c for m in copies for c in m.get("tool_calls") or []):
             if isinstance(call["function"]["arguments"], str):
                 call["function"]["arguments"] = json.loads(call["function"]["arguments"])

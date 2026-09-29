@@ -1325,6 +1325,7 @@ dependencies = [
     { name = "jinja2" },
     { name = "numpy" },
     { name = "openai" },
+    { name = "pydantic" },
     { name = "transformers" },
 ]
 
@@ -1346,6 +1347,7 @@ requires-dist = [
     { name = "jinja2", specifier = ">=3.1" },
     { name = "numpy", specifier = ">=2" },
     { name = "openai", specifier = ">=2" },
+    { name = "pydantic", specifier = ">=2" },
     { name = "transformers", specifier = ">=5.6" },
 ]
 
