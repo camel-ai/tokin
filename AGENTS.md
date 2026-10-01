@@ -186,3 +186,7 @@ Conventional Commits, enforced by a `commit-msg` hook: `feat`, `fix`, `docs`,
 `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
 
 `main` takes pull requests only, squash-merged, with `ci-ok` green.
+
+The repository is public. Anything internal to a developer's organization stays
+out of commits, pull requests, issues and tracked files, unless its owner has
+said it may be shared.
