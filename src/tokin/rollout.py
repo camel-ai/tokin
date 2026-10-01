@@ -10,7 +10,7 @@ from .messages import Message
 
 
 class FinishReason(StrEnum):
-    """Why a generation ended. OpenAI's enum has no `abort`; tokin reports it as it is."""
+    """Why a generation ended, as the engine reports it."""
 
     STOP = "stop"  # on one of the template's stop ids
     LENGTH = "length"  # `max_tokens`

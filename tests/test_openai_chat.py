@@ -3,22 +3,41 @@ from openai.types.chat.completion_create_params import CompletionCreateParamsStr
 from pydantic import ValidationError
 
 from tokin.apis import ChatRequest
+from tokin.rollout import FinishReason, Generation
 
-# OpenAI's keys `tokin` declines, each because honouring it is beyond a token-level engine or would need work not yet done.
-REFUSED = {
+# OpenAI's keys `tokin` does not serve: each is declared when a harness is seen sending it.
+UNSERVED = {
     "audio",
+    "frequency_penalty",
     "function_call",
     "functions",
     "logit_bias",
+    "logprobs",
+    "metadata",
     "modalities",
     "moderation",
+    "n",
+    "parallel_tool_calls",
     "prediction",
+    "presence_penalty",
+    "prompt_cache_key",
+    "prompt_cache_options",
+    "prompt_cache_retention",
     "reasoning_effort",
+    "response_format",
+    "safety_identifier",
+    "seed",
+    "service_tier",
+    "stop",
+    "store",
+    "stream",
+    "stream_options",
+    "tool_choice",
     "top_logprobs",
+    "user",
     "verbosity",
     "web_search_options",
 }
-ENGINE_EXTENSIONS = {"top_k", "min_p", "repetition_penalty"}
 
 CALL = {"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}
 
@@ -27,16 +46,16 @@ def request(**over):
     return ChatRequest.model_validate({"model": "m", "messages": [{"role": "user", "content": "hi"}], **over})
 
 
-def test_every_openai_key_is_served_or_refused():
+def test_every_openai_key_is_served_or_listed_unserved():
     # A bump of `openai` that adds a key fails here, so the new key gets a decision rather than a default.
     upstream = CompletionCreateParamsStreaming.__required_keys__ | CompletionCreateParamsStreaming.__optional_keys__
     served = {
         key
         for name, field in ChatRequest.model_fields.items()
         for key in (field.validation_alias.choices if field.validation_alias else [name])
-    } - ENGINE_EXTENSIONS
+    }
     assert served <= upstream
-    assert upstream - served == REFUSED
+    assert upstream - served == UNSERVED
 
 
 def test_undeclared_key_is_refused_by_name():
@@ -44,28 +63,14 @@ def test_undeclared_key_is_refused_by_name():
         request(verbosity="low")
 
 
-@pytest.mark.parametrize(
-    ("key", "value"),
-    [
-        ("n", 2),
-        ("stop", ["\n"]),
-        ("tool_choice", "required"),
-        ("logprobs", True),
-        ("response_format", {"type": "json_object"}),
-    ],
-)
-def test_what_cannot_be_honoured_is_refused_by_name(key, value):
-    with pytest.raises(ValidationError, match=key):
-        request(**{key: value})
-
-
-def test_no_op_values_and_bookkeeping_pass():
-    request(n=1, stop=[], tool_choice="auto", parallel_tool_calls=True, logprobs=False, user="u", store=False)
-
-
 def test_messages_drop_unknown_keys():
     got = request(messages=[{"role": "user", "content": "hi", "provider_specific_fields": {}}])
     assert got.messages == [{"role": "user", "content": "hi"}]
+
+
+def test_tools_keep_the_key_order_they_came_in():
+    tool = {"type": "function", "function": {"name": "f", "parameters": {"type": "object"}}}
+    assert list(request(tools=[tool]).tools[0]) == ["type", "function"]
 
 
 def test_max_completion_tokens_is_max_tokens():
@@ -73,14 +78,15 @@ def test_max_completion_tokens_is_max_tokens():
 
 
 def test_params_leave_out_what_the_harness_did_not_set():
-    assert request(temperature=0.7).params(8, [1]) == {"max_tokens": 8, "stop_ids": [1], "temperature": 0.7}
-
-
-def test_params_take_the_callers_max_tokens():
-    assert request(max_tokens=100).params(8, [1])["max_tokens"] == 8
+    assert request(temperature=0.7).params == {"temperature": 0.7}
 
 
 def test_lazy_fields_are_read_into_lists():
     parts = [{"type": "text", "text": "hi"}]
     got = request(messages=[{"role": "user", "content": parts}, {"role": "assistant", "tool_calls": [CALL]}])
     assert got.messages[0]["content"] == parts and got.messages[1]["tool_calls"] == [CALL]
+
+
+def test_respond_reports_a_stop_with_tool_calls_as_tool_calls():
+    message = {"role": "assistant", "content": None, "tool_calls": [CALL]}
+    assert request().respond(message, Generation([1, 2], FinishReason.STOP), 3).choices[0].finish_reason == "tool_calls"
