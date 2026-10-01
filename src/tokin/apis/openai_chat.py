@@ -1,13 +1,23 @@
 from __future__ import annotations
 
-from collections.abc import Collection
-from typing import Annotated, Any, ClassVar, Literal, cast
+import time
+from typing import Annotated, Any, ClassVar, cast
+from uuid import uuid4
 
-from openai.types.shared_params import ResponseFormatText
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, TypeAdapter, field_validator
+from openai.types.chat import ChatCompletion
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    ValidatorFunctionWrapHandler,
+    field_validator,
+)
 
 from ..backends import GenerationParams
-from ..messages import Message, ToolSchema
+from ..messages import AssistantMessage, Message, ToolSchema
+from ..rollout import FinishReason, Generation
 
 
 class ChatRequest(BaseModel, extra="forbid"):
@@ -20,42 +30,21 @@ class ChatRequest(BaseModel, extra="forbid"):
     model: str
     messages: list[Message]
     tools: list[ToolSchema] | None = None
-    stream: bool = False
-
     max_tokens: int | None = Field(None, validation_alias=AliasChoices("max_completion_tokens", "max_tokens"))
     temperature: float | None = None
     top_p: float | None = None
-    seed: int | None = None
-    frequency_penalty: float | None = None
-    presence_penalty: float | None = None
-    # Engine extensions, which a harness sends through `extra_body`.
-    top_k: int | None = None
-    min_p: float | None = None
-    repetition_penalty: float | None = None
-
-    # What `tokin` cannot honour, narrowed to the values that ask for nothing, since SDKs send those unasked.
-    n: Literal[1] = 1
-    stop: Annotated[list[str], Field(max_length=0)] | None = None
-    tool_choice: Literal["auto"] | None = None
-    parallel_tool_calls: Literal[True] | None = None
-    logprobs: Literal[False] | None = None
-    response_format: ResponseFormatText | None = None
-
-    # Bookkeeping OpenAI accepts and `tokin` has no use for.
-    user: str | None = None
-    safety_identifier: str | None = None
-    metadata: dict[str, str] | None = None
-    store: bool | None = None
-    stream_options: dict[str, Any] | None = None
-    service_tier: str | None = None
-    prompt_cache_key: str | None = None
-    prompt_cache_options: dict[str, Any] | None = None
-    prompt_cache_retention: str | None = None
 
     # SDKs decorate messages with keys no template reads, so messages drop what the body refuses.
     messages_adapter: ClassVar[TypeAdapter[list[Message]]] = TypeAdapter(
         list[Annotated[Message, Field(discriminator="role")]], config=ConfigDict(extra="ignore")
     )
+
+    @field_validator("tools", mode="wrap")
+    @classmethod
+    def as_sent(cls, value: Any, handler: ValidatorFunctionWrapHandler) -> Any:
+        """Validated but kept as the harness sent them: templates print tools with `tojson`, so their key order is prompt."""
+        handler(value)
+        return value
 
     @field_validator("messages", mode="plain")
     @classmethod
@@ -68,8 +57,26 @@ class ChatRequest(BaseModel, extra="forbid"):
                     m[key] = list(value)
         return messages
 
-    def params(self, max_tokens: int, stop_ids: Collection[int]) -> GenerationParams:
-        """What the harness asked, for the engine; `max_tokens` is the caller's so it can be capped to the context left."""
-        # A field named as a `GenerationParams` key means the same to the engine; the caller's two keys go last to win.
-        asked = self.model_dump(include=set(GenerationParams.__optional_keys__), exclude_none=True)
-        return cast(GenerationParams, {**asked, "max_tokens": max_tokens, "stop_ids": stop_ids})
+    @property
+    def params(self) -> dict[str, Any]:
+        """What the harness asked of the engine, under `GenerationParams`' names; a field named as one of its keys means the same."""
+        return self.model_dump(include=set(GenerationParams.__optional_keys__), exclude_none=True)
+
+    def respond(self, message: AssistantMessage, generation: Generation, prompt_tokens: int) -> ChatCompletion:
+        """The answer to this request; a stop that made tool calls is `tool_calls`, which harnesses branch on."""
+        stopped = generation.finish_reason is FinishReason.STOP
+        reason = "tool_calls" if stopped and message.get("tool_calls") else generation.finish_reason
+        return ChatCompletion.model_validate(
+            {
+                "id": f"chatcmpl-{uuid4().hex}",
+                "object": "chat.completion",
+                "created": int(time.time()),
+                "model": self.model,
+                "choices": [{"index": 0, "message": message, "finish_reason": reason}],
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": len(generation),
+                    "total_tokens": prompt_tokens + len(generation),
+                },
+            }
+        )
