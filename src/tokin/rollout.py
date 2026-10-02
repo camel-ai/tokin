@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -71,13 +72,17 @@ class Rollout:
         """Every segment's ids concatenated — the prefix the next prompt extends."""
         return [i for s in self.segments for i in s.token_ids]
 
-    def append(self, segment: Prompt | Generation) -> None:
-        """Add a segment; a rollout opens with a prompt, and an empty segment adds nothing."""
-        if not segment.token_ids:
-            return
-        if not self.segments and isinstance(segment, Generation):
-            raise RuntimeError("a rollout cannot open with a generation")
-        self.segments.append(segment)
+    def append(self, segment: Prompt | Generation, messages: Sequence[Message]) -> None:
+        """Add a segment with the messages it carries: those a prompt rendered, or the reply a generation was read as.
+
+        A rollout opens with a prompt. An empty segment adds no segment, but its messages are still
+        part of the conversation: a generation of no tokens is still a reply the harness got.
+        """
+        if segment.token_ids:
+            if not self.segments and isinstance(segment, Generation):
+                raise RuntimeError("a rollout cannot open with a generation")
+            self.segments.append(segment)
+        self.messages.extend(messages)
 
     def routed_experts(self, layers: int, top_k: int) -> NDArray[np.int32]:
         """Every position's expert routing so far, shape `(len(self) - 1, layers, top_k)`, joined from the per-call slices.

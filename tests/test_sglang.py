@@ -39,12 +39,20 @@ async def call(fake, retries=3, **params):
         return await backend.generate([1, 2], {"stop_ids": frozenset({7, 3}), **params})
 
 
-async def test_context_length_reads_server_info():
-    for reply in ({"context_length": 32768}, {"context_length": None}):
-        async with httpx2.AsyncClient(
-            transport=httpx2.MockTransport(lambda r, reply=reply: httpx2.Response(200, json=reply))
-        ) as client:
-            assert await SGLangBackend("http://sglang/", client).context_length() == reply["context_length"]
+def models(max_model_len):
+    reply = {"object": "list", "data": [{"id": "m", "max_model_len": max_model_len}]}
+    return httpx2.AsyncClient(transport=httpx2.MockTransport(lambda r: httpx2.Response(200, json=reply)))
+
+
+async def test_context_length_is_the_model_cards():
+    async with models(32768) as client:
+        assert await SGLangBackend("http://sglang/", client).context_length() == 32768
+
+
+async def test_missing_context_length_is_an_error():
+    async with models(None) as client:
+        with pytest.raises(GenerationError, match="no context length"):
+            await SGLangBackend("http://sglang/", client).context_length()
 
 
 class TestGenerate:
@@ -89,7 +97,7 @@ class TestGenerate:
         buffer = bytes(range(24))
         reply = {**REPLY, "meta_info": {**REPLY["meta_info"], "routed_experts": base64.b64encode(buffer).decode()}}
         fake = FakeSGLang(reply)
-        got = await call(fake, max_tokens=8, routed_experts_start=9)
+        got = await call(fake, max_tokens=8, return_routed_experts=True, routed_experts_start=9)
         [body] = fake.requests
         assert body["return_routed_experts"] is True and body["routed_experts_start_len"] == 9
         assert "routed_experts_start_len" not in body["sampling_params"] and got.routed_experts == buffer

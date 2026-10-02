@@ -1,17 +1,12 @@
+import asyncio
+
 import pytest
 from conftest import END
 
 from tokin.backends import GenerationBackend, GenerationError
-from tokin.gateway import (
-    DuplicateSessionError,
-    Gateway,
-    GatewayError,
-    GenerationAbortedError,
-    HistoryConflictError,
-    PromptTooLongError,
-    SessionNotFoundError,
-)
+from tokin.gateway import ContextLengthExceededError, Gateway, GenerationAbortedError
 from tokin.rollout import FinishReason, Generation
+from tokin.session import Session
 
 USER = {"role": "user", "content": "hi"}
 REPLY = {"role": "assistant", "content": "ok"}
@@ -19,11 +14,11 @@ AGAIN = {"role": "user", "content": "again"}
 
 
 class Engine(GenerationBackend):
-    def __init__(self, *replies):
-        self.replies, self.calls = list(replies), []
+    def __init__(self, *replies, context_length=1000):
+        self.replies, self.calls, self.length = list(replies), [], context_length
 
     async def context_length(self):
-        return None
+        return self.length
 
     async def generate(self, token_ids, params):
         self.calls.append((token_ids, params))
@@ -37,104 +32,69 @@ def said(text, finish=FinishReason.STOP):
 @pytest.fixture
 def gateway(chatml):
     def make(*replies, context_length=1000):
-        return Gateway(chatml, Engine(*replies), context_length=context_length)
+        return Gateway(chatml, Engine(*replies, context_length=context_length))
 
     return make
-
-
-def test_create_mints_an_id_unless_given(gateway):
-    g = gateway()
-    assert g.create().id != g.create().id
-    assert g.create("episode-7").id == "episode-7"
-    assert len(g.sessions) == 3
-
-
-def test_get_returns_the_same_session(gateway):
-    g = gateway()
-    assert g.get(g.create("a").id) is g.sessions["a"]
-
-
-def test_delete_removes_and_returns(gateway):
-    g = gateway()
-    s = g.create("a")
-    assert g.delete("a") is s
-    assert not g.sessions
-
-
-@pytest.mark.parametrize("call", [Gateway.get, Gateway.delete])
-def test_unknown_session_is_404(gateway, call):
-    with pytest.raises(SessionNotFoundError, match="'nope'") as e:
-        call(gateway(), "nope")
-    assert e.value.status_code == 404
-
-
-def test_taken_id_is_409(gateway):
-    g = gateway()
-    g.create("a")
-    with pytest.raises(DuplicateSessionError, match="'a'") as e:
-        g.create("a")
-    assert e.value.status_code == 409 and isinstance(e.value, GatewayError)
 
 
 class TestChat:
     async def test_first_turn_renders_in_full(self, gateway, chatml):
         g = gateway(said("ok"))
-        message, generation, prompt_tokens = await g.chat([USER], session_id=g.create().id)
-        assert g.backend.calls[0][0] == chatml.encode(chatml.apply([USER])) and prompt_tokens == len(
-            g.backend.calls[0][0]
-        )
+        message, generation, input_len = await g.chat(Session(), [USER])
+        assert g.backend.calls[0][0] == chatml.encode(chatml.apply([USER])) and input_len == len(g.backend.calls[0][0])
         assert message == {"role": "assistant", "content": "ok"} and generation.finish_reason is FinishReason.STOP
 
     async def test_later_turn_extends_the_rollout_by_the_increment(self, gateway, chatml):
         g = gateway(said("ok"), said("ok"))
-        s = g.create()
-        await g.chat([USER], session_id=s.id)
+        s = Session()
+        await g.chat(s, [USER])
         served = s.current.token_ids
-        await g.chat([USER, REPLY, AGAIN], session_id=s.id)
+        await g.chat(s, [USER, REPLY, AGAIN])
         assert g.backend.calls[1][0] == served + chatml.encode(chatml.apply_increment([AGAIN]))
 
-    async def test_rewritten_history_is_a_conflict(self, gateway):
-        g = gateway(said("ok"))
-        s = g.create()
-        await g.chat([USER], session_id=s.id)
-        with pytest.raises(HistoryConflictError, match="extend"):
-            await g.chat([{"role": "user", "content": "changed"}, REPLY, AGAIN], session_id=s.id)
-
-    async def test_assistant_tokin_did_not_write_is_a_conflict(self, gateway):
-        g = gateway(said("ok"))
-        s = g.create()
-        await g.chat([USER], session_id=s.id)
-        with pytest.raises(HistoryConflictError, match="did not generate"):
-            await g.chat([USER, REPLY, AGAIN, {"role": "assistant", "content": "Sure, "}], session_id=s.id)
-
-    async def test_cut_short_generation_cannot_be_extended(self, gateway):
-        g = gateway(said("o", FinishReason.LENGTH))
-        s = g.create()
-        await g.chat([USER], session_id=s.id)
-        with pytest.raises(HistoryConflictError, match="stop token"):
-            await g.chat([USER, {"role": "assistant", "content": "o"}, AGAIN], session_id=s.id)
-
     async def test_prompt_past_the_context_is_refused(self, gateway):
-        with pytest.raises(PromptTooLongError):
-            await gateway(context_length=5).chat([USER])
+        with pytest.raises(ContextLengthExceededError):
+            await gateway(context_length=5).chat(Session(), [USER])
 
-    async def test_max_tokens_is_capped_to_the_room_left(self, gateway, chatml):
+    async def test_max_tokens_that_do_not_fit_are_refused(self, gateway, chatml):
+        g = gateway(context_length=len(chatml.encode(chatml.apply([USER]))) + 3)
+        with pytest.raises(ContextLengthExceededError, match="max_tokens=4"):
+            await g.chat(Session(), [USER], params={"max_tokens": 4})
+
+    async def test_unset_max_tokens_take_the_room_left(self, gateway, chatml):
         g = gateway(said("ok"), context_length=len(chatml.encode(chatml.apply([USER]))) + 3)
-        await g.chat([USER], params={"max_tokens": 100})
+        await g.chat(Session(), [USER])
         assert g.backend.calls[0][1]["max_tokens"] == 3
+
+    async def test_routed_experts_start_where_the_rollout_has_them(self, gateway):
+        g = gateway(said("ok"), said("ok"))
+        s = Session()
+        await g.chat(s, [USER], params={"return_routed_experts": True})
+        served = len(s.current)
+        await g.chat(s, [USER, REPLY, AGAIN], params={"return_routed_experts": True})
+        assert [p["routed_experts_start"] for _, p in g.backend.calls] == [0, served - 1]
+
+    async def test_the_engine_is_asked_its_context_length_once(self, gateway):
+        g = gateway(*[said("ok")] * 3)
+        g.backend.asked = 0
+        length = g.backend.context_length
+
+        async def counted():
+            g.backend.asked += 1
+            await asyncio.sleep(0)  # let the other first turns arrive while this one waits on the engine
+            return await length()
+
+        g.backend.context_length = counted
+        await asyncio.gather(*(g.chat(Session(), [USER]) for _ in range(3)))
+        assert g.backend.asked == 1
 
     async def test_stop_off_a_stop_id_is_an_engine_error(self, gateway):
         with pytest.raises(GenerationError, match="stop id"):
-            await gateway(Generation([ord("o")], FinishReason.STOP)).chat([USER])
+            await gateway(Generation([ord("o")], FinishReason.STOP)).chat(Session(), [USER])
 
     async def test_engine_abort_is_503_and_records_nothing(self, gateway):
         g = gateway(said("o", FinishReason.ABORT))
-        s = g.create()
+        s = Session()
         with pytest.raises(GenerationAbortedError) as e:
-            await g.chat([USER], session_id=s.id)
+            await g.chat(s, [USER])
         assert e.value.status_code == 503 and not s.current.segments and not s.current.messages
-
-    async def test_without_a_session_nothing_is_kept(self, gateway):
-        g = gateway(said("ok"))
-        await g.chat([USER])
-        assert not g.sessions

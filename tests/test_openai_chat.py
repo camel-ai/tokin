@@ -73,6 +73,11 @@ def test_tools_keep_the_key_order_they_came_in():
     assert list(request(tools=[tool]).tools[0]) == ["type", "function"]
 
 
+def test_max_tokens_below_one_is_refused():
+    with pytest.raises(ValidationError, match="max_tokens"):
+        request(max_tokens=0)
+
+
 def test_max_completion_tokens_is_max_tokens():
     assert request(max_completion_tokens=5).max_tokens == 5
 

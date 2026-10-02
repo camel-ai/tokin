@@ -27,8 +27,14 @@ before shipping, ask what can still come out.
   when something needs it, not when it can be foreseen.
 - One source per fact. Derive a list from the thing it lists rather than keep a
   copy that can drift.
-- What stays must still be refused loudly when it doesn't apply. Less code is
-  never a silently dropped input.
+
+## No silent fallback
+
+When the code cannot do what it was asked, it raises an error that says why. It
+never substitutes a value, a truncation or a default the caller did not choose:
+a run that quietly did something else is worse than one that failed, since
+nobody learns that it happened. A default is what a parameter means when it is
+left out, never a rescue for one that does not fit.
 
 ## Style
 
@@ -70,12 +76,14 @@ that is the target rather than a gap. `D1` stays unselected.
 
 ### Comments
 
-A comment states the non-obvious reason at the boundary that owns it. One
-sentence. Add a constraint or an expiry condition only when a maintainer needs it
-to judge when the reason stops holding.
+A comment does one of two jobs. It states a non-obvious reason at the boundary
+that owns it, in one sentence, adding a constraint or an expiry condition only
+when a maintainer needs it to judge when the reason stops holding. Or it marks
+the structure of a long method, such as the numbered stages of a pipeline, so a
+reader sees its shape before its lines.
 
-Never restate the operation, preserve an intermediate attempt, or list
-speculative future work.
+A comment never narrates: it does not say again what the next line does, tell how
+the code came to be or what was tried before it, or list work that may come later.
 
 Behaviour goes in code; durable contracts go in the doc that owns them. If an
 explanation runs to a paragraph, it is either describing what the code already

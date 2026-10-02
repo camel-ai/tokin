@@ -30,7 +30,7 @@ class ChatRequest(BaseModel, extra="forbid"):
     model: str
     messages: list[Message]
     tools: list[ToolSchema] | None = None
-    max_tokens: int | None = Field(None, validation_alias=AliasChoices("max_completion_tokens", "max_tokens"))
+    max_tokens: int | None = Field(None, ge=1, validation_alias=AliasChoices("max_completion_tokens", "max_tokens"))
     temperature: float | None = None
     top_p: float | None = None
 
@@ -58,11 +58,13 @@ class ChatRequest(BaseModel, extra="forbid"):
         return messages
 
     @property
-    def params(self) -> dict[str, Any]:
+    def params(self) -> GenerationParams:
         """What the harness asked of the engine, under `GenerationParams`' names; a field named as one of its keys means the same."""
-        return self.model_dump(include=set(GenerationParams.__optional_keys__), exclude_none=True)
+        return cast(
+            GenerationParams, self.model_dump(include=set(GenerationParams.__optional_keys__), exclude_none=True)
+        )
 
-    def respond(self, message: AssistantMessage, generation: Generation, prompt_tokens: int) -> ChatCompletion:
+    def respond(self, message: AssistantMessage, generation: Generation, input_len: int) -> ChatCompletion:
         """The answer to this request; a stop that made tool calls is `tool_calls`, which harnesses branch on."""
         stopped = generation.finish_reason is FinishReason.STOP
         reason = "tool_calls" if stopped and message.get("tool_calls") else generation.finish_reason
@@ -74,9 +76,9 @@ class ChatRequest(BaseModel, extra="forbid"):
                 "model": self.model,
                 "choices": [{"index": 0, "message": message, "finish_reason": reason}],
                 "usage": {
-                    "prompt_tokens": prompt_tokens,
+                    "prompt_tokens": input_len,
                     "completion_tokens": len(generation),
-                    "total_tokens": prompt_tokens + len(generation),
+                    "total_tokens": input_len + len(generation),
                 },
             }
         )

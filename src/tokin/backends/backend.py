@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Collection
-from typing import Any, ClassVar, Required, TypedDict
+from typing import Any, ClassVar, TypedDict
 
 from ..rollout import Generation
 
@@ -18,8 +18,8 @@ class GenerationParams(TypedDict, total=False):
     request_id: str
 
     # Length and stopping.
-    max_tokens: Required[int]
-    stop_ids: Required[Collection[int]]
+    max_tokens: int
+    stop_ids: Collection[int]
 
     # Distribution: how the next token is drawn.
     temperature: float
@@ -38,6 +38,7 @@ class GenerationParams(TypedDict, total=False):
 
     # Additional data to return besides the ids
     return_logprobs: bool
+    return_routed_experts: bool
     routed_experts_start: int
 
 
@@ -60,8 +61,8 @@ class GenerationBackend(ABC):
         return out
 
     @abstractmethod
-    async def context_length(self) -> int | None:
-        """The most tokens a prompt and its generation may total, or `None` when the engine left it to the model's config."""
+    async def context_length(self) -> int:
+        """The most tokens a prompt and its generation may total; `GenerationError` when the engine cannot say."""
         raise NotImplementedError
 
     @abstractmethod
