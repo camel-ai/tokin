@@ -36,18 +36,13 @@ class SGLangBackend(GenerationBackend):
         self.retries = retries
         self.retry_delay = retry_delay
 
-    def translate(self, params: GenerationParams) -> dict[str, Any]:
-        out = super().translate(params)
-        # sglang wants the switch and the start as two fields; one key of ours is both.
-        if "routed_experts_start_len" in out:
-            out["return_routed_experts"] = True
-        return out
-
-    async def context_length(self) -> int | None:
-        response = await self.client.get(f"{self.url}/server_info")
+    async def context_length(self) -> int:
+        response = await self.client.get(f"{self.url}/v1/models")
         response.raise_for_status()
-        length = response.json().get("context_length")
-        return None if length is None else int(length)
+        # The model card has the length sglang resolved and checks requests against; `/server_info` only echoes the flag.
+        if (length := response.json()["data"][0].get("max_model_len")) is None:
+            raise GenerationError("sglang reports no context length")
+        return int(length)
 
     async def post(self, payload: dict[str, Any]) -> Any:
         """The JSON `/generate` answers, after however many retries it takes."""

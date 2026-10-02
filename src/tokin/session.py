@@ -9,13 +9,10 @@ from .rollout import Rollout
 
 @dataclass
 class Session:
-    """One agent run, as the rollouts it produced.
+    """One agent run, as the rollouts it produced; turns append to `current` in place.
 
-    Usually one: turns append to it in place. A harness that rewrites history —
-    context compaction, a re-rendered prior turn — breaks the prefix the next
-    prompt would extend, and the run continues in a fresh rollout via `fork`.
-    Every rollout here shares an outcome, which is what lets a trainer weight the
-    run once rather than once per fork.
+    A list although a run has one rollout for now: a run whose history is rewritten
+    continues in a fresh one, and every rollout of a run shares its outcome.
     """
 
     id: str = field(default_factory=lambda: uuid4().hex)
@@ -26,11 +23,6 @@ class Session:
     @property
     def current(self) -> Rollout:
         """The rollout new turns append to."""
-        return self.rollouts[-1]
-
-    def fork(self) -> Rollout:
-        """Start a fresh rollout, leaving the previous one closed but trainable."""
-        self.rollouts.append(Rollout())
         return self.rollouts[-1]
 
     def __len__(self) -> int:

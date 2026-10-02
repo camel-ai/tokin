@@ -8,6 +8,7 @@ from transformers import AutoConfig, AutoTokenizer, GenerationConfig
 from tokin.chat_templates import CHAT_TEMPLATES, ChatTemplateError, get_chat_template
 from tokin.chat_templates.glm import GLMChatTemplate
 from tokin.chat_templates.qwen import Qwen35ChatTemplate, QwenChatTemplate
+from tokin.rollout import FinishReason, Generation
 
 TOOLS = [
     {
@@ -75,6 +76,15 @@ def test_increment_is_a_token_suffix_of_the_full_render(template, scenario):
     prefix = full[: len(full) - len(increment)]
     # The increment begins right after the model's stop token, so nothing is missing or doubled at the seam.
     assert full == prefix + increment and prefix[-1] in template.stop_ids
+
+
+@pytest.mark.parametrize("scenario", SCENARIOS.values(), ids=SCENARIOS.keys())
+def test_every_turn_opens_reasoning_as_the_template_says(template, scenario):
+    history, new, tools, tool_calls = scenario
+    if new[0]["role"] == "system" and template.tokenizer.name_or_path in REFUSES_MID_SYSTEM:
+        pytest.skip("the family takes no system message after the conversation starts")
+    for text in (template.apply(history + new, tools), template.apply_increment(new, tools, tool_calls=tool_calls)):
+        assert (text.rfind(template.reasoning_start) > text.rfind(template.reasoning_end)) is template.opens_reasoning
 
 
 def test_suffix_check_fails_without_the_turn_end_remainder():
@@ -146,8 +156,7 @@ def test_parse_reads_back_the_rendered_turn(template, turn):
     if not full.startswith(prompt):
         pytest.skip("the prompt's thinking mode does not match the turn")
     response = full[len(prompt) :].removesuffix(template.turn_end)
-    reasoning_open = prompt.rfind(template.reasoning_start) > prompt.rfind(template.reasoning_end)
-    got = template.parse(response, tools, reasoning_open=reasoning_open)
+    got = template.parse(Generation(template.encode(response) + [min(template.stop_ids)], FinishReason.STOP), tools)
     assert got["content"] == (turn["content"] or None)
     assert calls(got) == calls(turn)
     reasoning = turn.get("reasoning_content")

@@ -17,6 +17,7 @@ from ..messages import (
     ToolSchema,
     UserMessage,
 )
+from ..rollout import FinishReason, Generation
 from ..tool_parsers import ToolParser
 
 
@@ -61,10 +62,19 @@ class ChatTemplate:
             raise ValueError(f"{self.name or type(self).__name__} takes no kwarg named {sorted(unknown)}")
         self._kwargs = kwargs
         self.stop_ids = frozenset(self.token_id(s) for s in self.stop)
+        # The generation prompt follows from the template and its kwargs alone, so whether it leaves reasoning open does too.
+        probe = self.apply([UserMessage(role="user", content="tokin-probe")])
+        self.opens_reasoning = bool(self.reasoning_end) and probe.rfind(self.reasoning_start) > probe.rfind(
+            self.reasoning_end
+        )
 
     def encode(self, text: str) -> list[int]:
         """Never adds special tokens: the template already wrote the ones it wants."""
         return cast(list[int], self.tokenizer.encode(text, add_special_tokens=False))
+
+    def decode(self, ids: list[int]) -> str:
+        """The text of `ids` as sampled, special tokens included, so nothing the model wrote drops out."""
+        return cast(str, self.tokenizer.decode(ids, skip_special_tokens=False))
 
     def token_id(self, token: str) -> int:
         """Input `token` has to be exactly one token here, or the family and the tokenizer do not match."""
@@ -189,21 +199,18 @@ class ChatTemplate:
                 return text[len(s) :]
         raise ChatTemplateError(f"the increment opens with {text[:16]!r}, which the model never stops on")
 
-    def parse(
-        self, response: str, tools: list[ToolSchema] | None = None, *, reasoning_open: bool = False
-    ) -> AssistantMessage:
-        """Read back the assistant message from what the model sampled.
+    def parse(self, generation: Generation, tools: list[ToolSchema] | None = None) -> AssistantMessage:
+        """Read back the assistant message `generation` wrote.
 
         Args:
-            response (str): The sampled text without its stop token.
+            generation (Generation): What the engine sampled; a stop token it ended on is not text.
             tools (list[ToolSchema] | None): The schemas the calls may name; XML grammars type
                 their argument values by them.
-            reasoning_open (bool): The prompt wrote `reasoning_start` and not `reasoning_end`, so
-                `response` begins inside the reasoning block.
         """
-        text = response.lstrip()
+        stopped = generation.finish_reason is FinishReason.STOP
+        text = self.decode(generation.token_ids[:-1] if stopped else generation.token_ids).lstrip()
         message: AssistantMessage = {"role": "assistant", "content": None}
-        if self.reasoning_end and (reasoning_open or text.startswith(self.reasoning_start)):
+        if self.reasoning_end and (self.opens_reasoning or text.startswith(self.reasoning_start)):
             head, _, text = text.partition(self.reasoning_end)
             if reasoning := head.removeprefix(self.reasoning_start).strip():
                 message["reasoning_content"] = reasoning

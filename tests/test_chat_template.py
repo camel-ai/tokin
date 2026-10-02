@@ -4,12 +4,19 @@ import pytest
 from conftest import CHATML, END, START, ChatML, FakeTokenizer
 
 from tokin.chat_templates import ChatTemplateError, get_chat_template
+from tokin.rollout import FinishReason, Generation
 
 USER = {"role": "user", "content": "hi"}
 SYSTEM = {"role": "system", "content": "be terse"}
 TOOLS = [{"type": "function", "function": {"name": "f", "description": "d", "parameters": {"type": "object"}}}]
 CALLS = [{"id": "c1", "type": "function", "function": {"name": "f", "arguments": '{"x": 1}'}}]
 TOOL = {"role": "tool", "tool_call_id": "c1", "content": "18C"}
+# A generation prompt that opens the think block itself, as Qwen3.5's does, unless thinking is off.
+OPEN_THINK = CHATML.replace("<think></think>{% endif %}", "<think></think>{% else %}<think>\n{% endif %}")
+
+
+def sampled(text, finish=FinishReason.STOP):
+    return Generation([ord(c) for c in text] + [ord(END)] * (finish is FinishReason.STOP), finish)
 
 
 def test_conform_parses_string_arguments_without_touching_the_input():
@@ -117,58 +124,72 @@ class TestApplyAfterStub:
             ChatML(FakeTokenizer(hoisting)).apply_increment([SYSTEM])
 
 
+def test_opens_reasoning_follows_the_generation_prompt():
+    assert not ChatML(FakeTokenizer()).opens_reasoning
+    assert ChatML(FakeTokenizer(OPEN_THINK)).opens_reasoning
+    assert not ChatML(FakeTokenizer(OPEN_THINK), enable_thinking=False).opens_reasoning
+
+
 class TestParse:
     def test_think_block(self):
-        got = ChatML(FakeTokenizer()).parse("<think>\nhmm\n</think>\n\nok")
+        got = ChatML(FakeTokenizer()).parse(sampled("<think>\nhmm\n</think>\n\nok"))
         assert got == {"role": "assistant", "content": "ok", "reasoning_content": "hmm"}
 
     def test_reasoning_left_open_by_the_prompt(self):
-        got = ChatML(FakeTokenizer()).parse("hmm\n</think>\n\nok", reasoning_open=True)
+        got = ChatML(FakeTokenizer(OPEN_THINK)).parse(sampled("hmm\n</think>\n\nok"))
         assert got == {"role": "assistant", "content": "ok", "reasoning_content": "hmm"}
 
-    def test_truncated_inside_open_reasoning(self):
-        got = ChatML(FakeTokenizer()).parse("hmm", reasoning_open=True)
+    def test_cut_short_keeps_its_last_token(self):
+        got = ChatML(FakeTokenizer(OPEN_THINK)).parse(sampled("hmm", FinishReason.LENGTH))
         assert got == {"role": "assistant", "content": None, "reasoning_content": "hmm"}
 
     def test_empty_think_block(self):
-        assert ChatML(FakeTokenizer()).parse("<think>\n\n</think>\n\nok") == {"role": "assistant", "content": "ok"}
+        assert ChatML(FakeTokenizer()).parse(sampled("<think>\n\n</think>\n\nok")) == {
+            "role": "assistant",
+            "content": "ok",
+        }
 
     def test_unclosed_think(self):
-        got = ChatML(FakeTokenizer()).parse("<think>\nhmm")
+        got = ChatML(FakeTokenizer()).parse(sampled("<think>\nhmm"))
         assert got == {"role": "assistant", "content": None, "reasoning_content": "hmm"}
 
     def test_no_think(self):
-        assert ChatML(FakeTokenizer()).parse("ok") == {"role": "assistant", "content": "ok"}
+        assert ChatML(FakeTokenizer()).parse(sampled("ok")) == {"role": "assistant", "content": "ok"}
 
     def test_stray_close_tag_stays_in_content(self):
-        assert ChatML(FakeTokenizer()).parse("ok </think> x") == {"role": "assistant", "content": "ok </think> x"}
+        assert ChatML(FakeTokenizer()).parse(sampled("ok </think> x")) == {
+            "role": "assistant",
+            "content": "ok </think> x",
+        }
 
     def test_tool_calls(self):
         got = ChatML(FakeTokenizer()).parse(
-            'Checking.\n<tool_call>\n{"name": "f", "arguments": {"x": 1}}\n</tool_call>'
+            sampled('Checking.\n<tool_call>\n{"name": "f", "arguments": {"x": 1}}\n</tool_call>')
         )
         [call] = got["tool_calls"]
         assert got["content"] == "Checking." and call["id"].startswith("call_") and call["type"] == "function"
         assert call["function"] == {"name": "f", "arguments": '{"x": 1}'}
 
     def test_tool_calls_alone_leave_no_content(self):
-        got = ChatML(FakeTokenizer()).parse('<tool_call>\n{"name": "f", "arguments": {}}\n</tool_call>')
+        got = ChatML(FakeTokenizer()).parse(sampled('<tool_call>\n{"name": "f", "arguments": {}}\n</tool_call>'))
         assert got["content"] is None and len(got["tool_calls"]) == 1
 
     def test_tool_call_drafted_in_reasoning_is_not_a_call(self):
         text = '<think>\n<tool_call>\n{"name": "f", "arguments": {}}\n</tool_call>\n</think>\n\nok'
-        got = ChatML(FakeTokenizer()).parse(text)
+        got = ChatML(FakeTokenizer()).parse(sampled(text))
         assert "tool_calls" not in got and got["content"] == "ok"
 
     def test_tool_call_in_unclosed_reasoning_is_draft(self):
-        got = ChatML(FakeTokenizer()).parse('<think>\nhmm\n<tool_call>\n{"name": "f", "arguments": {}}\n</tool_call>')
+        got = ChatML(FakeTokenizer()).parse(
+            sampled('<think>\nhmm\n<tool_call>\n{"name": "f", "arguments": {}}\n</tool_call>')
+        )
         assert "tool_calls" not in got and got["content"] is None
 
     def test_family_without_reasoning_block(self):
         class NoThink(ChatML):
             reasoning_start = reasoning_end = ""
 
-        got = NoThink(FakeTokenizer()).parse("<think>hmm</think>ok")
+        got = NoThink(FakeTokenizer()).parse(sampled("<think>hmm</think>ok"))
         assert got == {"role": "assistant", "content": "<think>hmm</think>ok"}
 
 
