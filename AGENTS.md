@@ -30,11 +30,11 @@ before shipping, ask what can still come out.
 
 ## No silent fallback
 
-When the code cannot do what it was asked, it raises an error that says why. It
-never substitutes a value, a truncation or a default the caller did not choose:
-a run that quietly did something else is worse than one that failed, since
-nobody learns that it happened. A default is what a parameter means when it is
-left out, never a rescue for one that does not fit.
+When the code cannot do what it was asked, it raises an error that says why. A
+fallback, some value or path the caller did not choose, needs a reason that
+holds for every caller, and the code states it where it falls back. Without one
+it is a bug that hides itself: a run that quietly did something else is worse
+than one that failed, since nobody learns that it happened.
 
 ## Style
 

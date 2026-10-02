@@ -56,10 +56,10 @@ class TestChat:
         with pytest.raises(ContextLengthExceededError):
             await gateway(context_length=5).chat(Session(), [USER])
 
-    async def test_max_tokens_that_do_not_fit_are_refused(self, gateway, chatml):
-        g = gateway(context_length=len(chatml.encode(chatml.apply([USER]))) + 3)
-        with pytest.raises(ContextLengthExceededError, match="max_tokens=4"):
-            await g.chat(Session(), [USER], params={"max_tokens": 4})
+    async def test_max_tokens_are_capped_to_the_room_left(self, gateway, chatml):
+        g = gateway(said("ok"), context_length=len(chatml.encode(chatml.apply([USER]))) + 3)
+        await g.chat(Session(), [USER], params={"max_tokens": 100})
+        assert g.backend.calls[0][1]["max_tokens"] == 3
 
     async def test_unset_max_tokens_take_the_room_left(self, gateway, chatml):
         g = gateway(said("ok"), context_length=len(chatml.encode(chatml.apply([USER]))) + 3)

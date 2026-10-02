@@ -65,8 +65,8 @@ class Gateway:
             messages (list[Message]): The conversation as the harness sends it, whole; only those
                 past what `session` has served are rendered.
             tools (list[ToolSchema] | None): The tools the model may call.
-            params (GenerationParams | None): What the caller asks of the engine. An unset
-                `max_tokens` takes the context left; a set one has to fit it.
+            params (GenerationParams | None): What the caller asks of the engine. `max_tokens`
+                is capped to the context left, which it is when unset.
 
         Returns:
             `(message, generation, input_len)`: the reply parsed, the generation it was parsed
@@ -82,18 +82,19 @@ class Gateway:
             # 1. Render: what this turn adds to the rollout, as ids.
             text = self.render(rollout, messages, tools)
             prompt = Prompt(self.template.encode(text))
-            # 2. Budget: unset means up to the context, as OpenAI has it; sent unset, sglang would stop at 128 tokens.
+            # 2. Budget: what the context leaves for this turn's generation.
             room = self.context_length - len(rollout) - len(prompt)
-            ask: GenerationParams = {"max_tokens": room, **(params or {}), "stop_ids": self.template.stop_ids}
-            if not 0 < ask["max_tokens"] <= room:
+            if room < 1:
                 raise ContextLengthExceededError(
-                    f"{len(rollout) + len(prompt)} prompt tokens leave {room} of {self.context_length}"
-                    f" for max_tokens={ask['max_tokens']}"
+                    f"{len(rollout) + len(prompt)} prompt tokens leave no room in {self.context_length}"
                 )
-            if ask.get("return_routed_experts"):
-                ask["routed_experts_start"] = max(0, len(rollout) - 1)
+            params = {**(params or {}), "stop_ids": self.template.stop_ids}
+            # Cut to the room left: a ceiling, so lowering it changes no generation that could fit.
+            params["max_tokens"] = min(params.get("max_tokens", room), room)
+            if params.get("return_routed_experts"):
+                params["routed_experts_start"] = max(0, len(rollout) - 1)
             # 3. Generate: the engine sees the rollout and the prompt, as ids only.
-            generation = await self.backend.generate(rollout.token_ids + prompt.token_ids, ask)
+            generation = await self.backend.generate(rollout.token_ids + prompt.token_ids, params)
             # 4. Check: a stop must end on a stop id, since the next increment drops that token as already sampled.
             if generation.finish_reason is FinishReason.ABORT:
                 raise GenerationAbortedError("the engine aborted the generation")
